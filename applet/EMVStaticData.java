@@ -12,7 +12,7 @@
  *
  */
 
-package openemv;
+package pstotp;
 
 import javacard.framework.ISOException;
 import javacard.framework.Util;

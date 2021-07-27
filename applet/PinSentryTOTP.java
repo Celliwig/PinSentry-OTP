@@ -31,7 +31,7 @@
  *
  */
 
-package openemv;
+package pstotp;
 
 import javacard.framework.APDU;
 import javacard.framework.Applet;

@@ -15,12 +15,12 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
- 
-package openemv;
+
+package pstotp;
 
 import javacard.framework.ISO7816;
 
-/* EMVConstants defines a constants used in the EMV standard and 
+/* EMVConstants defines a constants used in the EMV standard and
  * constants specific to this implementation. It extends ISO7816
  * as some ISO7816 constants are also used by EMV.
  *
@@ -63,7 +63,7 @@ public interface EMVConstants extends ISO7816 {
     byte   TC_CODE = (byte)0x40;
     byte  AAC_CODE = (byte)0x00;
     byte  RFU_CODE = (byte)0xC0;
-    
+
     /* types of AC  */
     byte NONE = (byte)0x00;
     byte ARQC = (byte)0x01;
@@ -73,5 +73,4 @@ public interface EMVConstants extends ISO7816 {
     // types of CVM performed; NONE for none.
     public final static byte PLAINTEXT_PIN = (byte)0x01;
     public final static byte ENCRYPTED_PIN = (byte)0x02;
-
 }
