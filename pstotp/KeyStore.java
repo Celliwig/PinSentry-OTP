@@ -24,9 +24,9 @@ public class KeyStore {
 	private MessageDigest sha1 = null;								// SHA1 methods
 
 	public KeyStore() {
-		ipad = JCSystem.makeTransientByteArray(KeySlot.MAX_KEY_SIZE_BYTES, JCSystem.CLEAR_ON_RESET);
-		opad = JCSystem.makeTransientByteArray(KeySlot.MAX_KEY_SIZE_BYTES, JCSystem.CLEAR_ON_RESET);
-		hmacBuf = JCSystem.makeTransientByteArray(HMAC_BUFFER_SIZE_BYTES, JCSystem.CLEAR_ON_RESET);
+		ipad = JCSystem.makeTransientByteArray(KeySlot.MAX_KEY_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
+		opad = JCSystem.makeTransientByteArray(KeySlot.MAX_KEY_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
+		hmacBuf = JCSystem.makeTransientByteArray(HMAC_BUFFER_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
 
 		rng_alg = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
 
@@ -96,5 +96,79 @@ public class KeyStore {
 		hash_len = sha1.doFinal(hmacBuf, (short) 0, (short) (64 + hash_len), outBuffer, outOffset);
 
 		return hash_len;
+	}
+
+// Use the SHA1 algo to create an HMAC based TOTP value for the supplied key/data pair
+	public short sha1HMACTOTP(byte[] key, short keyOffset, short keyLength, byte[] data, short dataOffset, short dataLength, byte[] outBuffer, short outOffset) {
+		byte offset, compVal;
+		short hash_len;
+		short totpResponse[] = JCSystem.makeTransientShortArray((short) 4, JCSystem.CLEAR_ON_DESELECT);	// Use shorts to hold byte values (allows for <0)
+		short totpDivisor[] = JCSystem.makeTransientShortArray((short) 4, JCSystem.CLEAR_ON_DESELECT);	// This is because no integer type available
+
+		// Generate SHA1 HMAC
+		hash_len = sha1HMAC(key, keyOffset, keyLength, data, dataOffset, dataLength, hmacBuf, (short) 0);
+
+		// Get offset
+		offset = (byte) (hmacBuf[(short) (hash_len - 1)] & 0x0f);
+		// Drop most significant bit
+		hmacBuf[offset] = (byte) (hmacBuf[offset] & 0x7f);
+
+		// Copy 4 required bytes from HMAC
+		totpResponse[0] = (short) (hmacBuf[offset] & 0xff);					// MSB
+		totpResponse[1] = (short) (hmacBuf[(short) (offset + 1)] & 0xff);
+		totpResponse[2] = (short) (hmacBuf[(short) (offset + 2)] & 0xff);
+		totpResponse[3] = (short) (hmacBuf[(short) (offset + 3)] & 0xff);			// LSB
+
+		// Create divisor for 6 digit TOTPs
+		totpDivisor[0] = 0x0000;								// MSB
+		totpDivisor[1] = 0x000f;
+		totpDivisor[2] = 0x0042;
+		totpDivisor[3] = 0x0040;								// LSB
+
+		// Need to perform totpResponse modulo totpDivisor
+		while (true) {
+			// Compare totpResponse and totpDivisor, specifically checking for totpResponse < totpDivisor
+			compVal = 0;
+			if (totpResponse[0] > totpDivisor[0]) compVal += 8;
+			if (totpResponse[0] < totpDivisor[0]) compVal -= 8;
+			if (totpResponse[1] > totpDivisor[1]) compVal += 4;
+			if (totpResponse[1] < totpDivisor[1]) compVal -= 4;
+			if (totpResponse[2] > totpDivisor[2]) compVal += 2;
+			if (totpResponse[2] < totpDivisor[2]) compVal -= 2;
+			if (totpResponse[3] > totpDivisor[3]) compVal += 1;
+			if (totpResponse[3] < totpDivisor[3]) compVal -= 1;
+			if (compVal < 0) break;
+
+			// Subtract totpDivisor from totpResponse
+			totpResponse[3] = (short)  (totpResponse[3] - totpDivisor[3]);
+			// Check for 'rollunder'
+			if (totpResponse[3] < 0) {
+				totpResponse[3] = (short) (totpResponse[3] + 0x100);
+				totpResponse[2]--;
+			}
+			totpResponse[2] = (short) (totpResponse[2] - totpDivisor[2]);
+			// Check for 'rollunder'
+			if (totpResponse[2] < 0) {
+				totpResponse[2] = (short) (totpResponse[2] + 0x100);
+				totpResponse[1]--;
+			}
+			totpResponse[1] = (short) (totpResponse[1] - totpDivisor[1]);
+			// Check for 'rollunder'
+			if (totpResponse[1] < 0) {
+				totpResponse[1] = (short) (totpResponse[1] + 0x100);
+				totpResponse[0]--;
+			}
+			totpResponse[0] = (short) (totpResponse[0] - totpDivisor[0]);
+			// Check for 'rollunder' (this shouldn't happen)
+			if (totpResponse[0] < 0) break;
+		}
+
+		// Copy result to output buffer
+		outBuffer[outOffset] = (byte) (totpResponse[0] & 0xff);
+		outBuffer[(short) (outOffset + 1)] = (byte) (totpResponse[1] & 0xff);
+		outBuffer[(short) (outOffset + 2)] = (byte) (totpResponse[2] & 0xff);
+		outBuffer[(short) (outOffset + 3)] = (byte) (totpResponse[3] & 0xff);
+
+		return (short) 4;
 	}
 }
