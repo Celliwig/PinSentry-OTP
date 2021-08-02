@@ -49,14 +49,8 @@ public class PinSentryTOTPAdmin extends Applet {
 	public static final byte ADMIN_PIN_LEN = 8;
 	public static final byte ADMIN_PIN_LEN_BYTES = ADMIN_PIN_LEN/2;
 
-	private final OwnerPIN AdminPIN;								// Applet's PIN
+	private final OwnerPIN AdminPIN;                                                                // Applet's PIN
 	private final KeyStore TOTPKeys;								// Keystore
-
-	/*
-	 * Transient byte array for constructing APDU responses.
-	 * We could have used the APDU buffer for this, but then we have to be careful not to
-	 * overwrite any info in the instruction APDU that we still need.
-	 */
 	private final byte[] Response;
 
 	private PinSentryTOTPAdmin() {
@@ -209,13 +203,29 @@ public class PinSentryTOTPAdmin extends Applet {
 
 // Update EMV PIN
 	private void updateEMVPIN(APDU apdu, byte[] apduBuffer) {
-//		// Check PIN length, 8 digits = 4 bytes
-//		if (apduBuffer[ISO7816.OFFSET_LC] == ADMIN_PIN_LEN_BYTES) {
-//			AdminPIN.update(apduBuffer, (short) ISO7816.OFFSET_CDATA, ADMIN_PIN_LEN_BYTES);
-			apdu.setOutgoingAndSend((short) 0, (short) 0);					// Return 9000
-//		} else {
-//			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
-//		}
+		short lc_actual = apdu.setIncomingAndReceive();
+		byte tmpLength = apduBuffer[ISO7816.OFFSET_LC];
+
+		// Check length
+		if ((lc_actual == (short) tmpLength) && (tmpLength > 0)) {
+			short pinLen = apduBuffer[ISO7816.OFFSET_CDATA];
+			// Check PIN length, 8 digits = 4 bytes
+			if (pinLen == KeyStore.ACCESS_PIN_LEN_BYTES) {
+				short hashLen = apduBuffer[(short) (ISO7816.OFFSET_CDATA + pinLen + 1)];
+				// Check hashes match
+				if (TOTPKeys.checkHash(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), pinLen,
+							apduBuffer, (short) (ISO7816.OFFSET_CDATA + pinLen + 2), hashLen)) {
+					TOTPKeys.AccessPIN.update(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), (byte) pinLen);
+					apdu.setOutgoingAndSend((short) 0, (short) 0);			// Return 9000
+				} else {
+					ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+				}
+			} else {
+				ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+			}
+		} else {
+			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+		}
 	}
 
 //////////////////////////////////////////////////////////////////////////////////////////
