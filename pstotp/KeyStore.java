@@ -106,8 +106,7 @@ public class KeyStore {
 		if (slotKeyLength < 3) return false;
 
 		// Get slot number
-		slotNum = (short) (slotKeyData[slotKeyOffset] << 8);
-		slotNum = (short) (slotNum + slotKeyData[(short) (slotKeyOffset + 1)]);
+		slotNum = Util.getShort(slotKeyData, slotKeyOffset);
 		// Check slot number valid
 		if ((slotNum < 0) || (slotNum >= KeyStore.NUM_KEY_SLOTS)) return false;
 
