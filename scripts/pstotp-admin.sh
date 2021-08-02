@@ -5,12 +5,13 @@ PIN_ADMIN=""
 PIN_NEW=""
 PSTOPT_ACTION=""
 SCRIPTNAME=`basename ${0}`
+SLOT_NUM=""
 
 usage() {
 	echo "${SCRIPTNAME}: PSTOTP Admin Tool"
 	echo "	-a		Add key"
 	echo "	-e		Update EMV PIN"
-	echo "	-k <key>	Key"
+	echo "	-k <key>	Key (as hex)"
 	echo "	-h		Help text (this)"
 	echo "	-i		Print card info"
 	echo "	-m		Management PIN"
@@ -45,6 +46,9 @@ while getopts ":htaie:k:m:n:s:" opt; do
 			PSTOPT_ACTION="updatepin"
 			PIN_NEW="${OPTARG}"
 			;;
+		s )
+			SLOT_NUM="${OPTARG}"
+			;;
 		\? )
 			echo "Invalid Argument: -${OPTARG}" 1>&2
 			;;
@@ -57,7 +61,8 @@ fi
 check_pin() {
 	local pin_txt=${1}
 	local pin_length=${2}
-	local pin_txt_len=`echo -n ${pin_txt}| wc -c`
+	local pin_txt_len=${#pin_txt}
+	# Strip non-numeric characters from PIN
 	local pin_len=`echo -n ${pin_txt}| sed 's|[^0-9]||g'| wc -c`
 	if [[ "${pin_txt}" == "" ]]; then
 		echo "${SCRIPTNAME}: Error: No PIN given"
@@ -69,6 +74,41 @@ check_pin() {
 	fi
 	if [ "${pin_len}" -ne "${pin_length}" ]; then
 		echo "${SCRIPTNAME}: Error: Incorrect PIN length: |${pin_txt}|"
+		exit -1
+	fi
+}
+
+check_slotnum() {
+	local slot_txt=${1}
+	local slot_max=${2}
+	local slot_txt_len=${#slot_txt}
+	# Strip non-numeric characters from slot number
+	local slot_len=`echo -n ${slot_txt}| sed 's|[^0-9]||g'| wc -c`
+	if [[ "${slot_txt}" == "" ]]; then
+		echo "${SCRIPTNAME}: Error: No slot number given"
+		exit -1
+	fi
+	if [ "${slot_txt_len}" -ne "${slot_len}" ]; then
+		echo "${SCRIPTNAME}: Error: Invalid slot number"
+		exit -1
+	fi
+	if [ "${slot_txt}" -gt "$((${slot_max}-1))" ]; then
+		echo "${SCRIPTNAME}: Error: Invalid slot number"
+		exit -1
+	fi
+}
+
+check_key() {
+	local key_txt=${1}
+	local key_txt_len=${#key_txt}
+	# Strip non-hex characters from slot number
+	local key_len=`echo -n ${key_txt}| sed 's|[^0-9a-fA-F]||g'| wc -c`
+	if [[ "${key_txt}" == "" ]]; then
+		echo "${SCRIPTNAME}: Error: No key given"
+		exit -1
+	fi
+	if [ "${key_txt_len}" -ne "${key_len}" ]; then
+		echo "${SCRIPTNAME}: Error: Invalid key"
 		exit -1
 	fi
 }
@@ -123,6 +163,29 @@ fetch_cardinfo_cardid() {
 	echo "${cardid}"
 }
 
+# Process cardinfo reply, extract max slots
+fetch_cardinfo_maxslots() {
+	local card_info_reply="${1}"
+
+	# Extract length of reply
+	local card_info_dlen_hex=`echo -n "${card_info_reply}" | head -c 2`
+	local card_info_dlen=`printf "%d" $((16#${card_info_dlen_hex}))`
+	# Extract reply
+	local card_info_reply=`echo -n "${card_info_reply}"| tail -c +3 | head -c $((${card_info_dlen} * 2))`
+
+	# Extract card ID
+	local cardid_size_hex=`echo -n "${card_info_reply}" | head -c 2`
+	local cardid_size=`printf "%d" $((16#${cardid_size_hex}))`
+	local card_info_reply=`echo -n "${card_info_reply}" | tail -c +3`
+	local cardid=`echo -n "${card_info_reply}" | head -c $((${cardid_size} * 2))`
+	local card_info_reply=`echo -n "${card_info_reply}" | tail -c +$(((${cardid_size} * 2) + 1))`
+
+	# Extract number of slots
+	local num_slots=`echo -n "${card_info_reply}" | head -c 4`
+
+	printf "%d" $((16#${num_slots}))
+}
+
 # Print contents of cardinfo reply
 display_info() {
 	local pin_txt="${1}"
@@ -175,7 +238,7 @@ update_pin() {
 	local update_pin_errcode=`echo "${update_pin}"| grep "Received " | tail -n 1`
 	echo "${update_pin_errcode}"| grep 'Received (SW1=0x90, SW2=0x00)' > /dev/null
 	if [ "${?}" -ne 0 ]; then
-		echo "failed [${card_auth_errcode}]"
+		echo "failed [${card_pin_errcode}]"
 		exit -1
 	fi
 	echo "OK"
@@ -204,7 +267,40 @@ update_pin_emv() {
 	local update_pin_errcode=`echo "${update_pin}"| grep "Received " | tail -n 1`
 	echo "${update_pin_errcode}"| grep 'Received (SW1=0x90, SW2=0x00)' > /dev/null
 	if [ "${?}" -ne 0 ]; then
-		echo "failed [${card_auth_errcode}]"
+		echo "failed [${card_pin_errcode}]"
+		exit -1
+	fi
+	echo "OK"
+}
+
+update_key_slot() {
+	local pin_txt="${1}"
+	local slot_num="${2}"
+	local key_hex="${3}"
+	check_pin "${pin_txt}" 8
+	check_auth "${pin_txt}"
+	local card_info_reply=`fetch_cardinfo "${pin_txt}"`
+	local cardid=`fetch_cardinfo_cardid "${card_info_reply}"`
+	local cardslots=`fetch_cardinfo_maxslots "${card_info_reply}"`
+	check_slotnum "${slot_num}" "${cardslots}"
+	check_key "${key_hex}"
+
+	# Build command primitive
+	local update_slot_cmd=`printf "%04x%s" ${slot_num} ${key_hex}`
+	# Build hash data
+	local hash_data=`echo -n "${update_slot_cmd}${cardid}"| xxd -r -p - |sha1sum | sed "s|  -||g"`
+	# Build command
+	local update_slot_cmd=`printf "%02x%s%02x%s" $((${#update_slot_cmd}/2)) ${update_slot_cmd} $((${#hash_data}/2)) ${hash_data}`
+	local update_slot_cmd=`printf "00020200%02x%s" $((${#update_slot_cmd}/2)) ${update_slot_cmd}`
+
+	# Execute command
+	echo -n "Update Slot[${slot_num}]: "
+	local update_slot=`opensc-tool -s "00A404000da00000000380022e61646d696e" -s "0001010004${pin_txt}" -s "${update_slot_cmd}" 2>/dev/null`
+	if [ ${?} -ne 0 ]; then echo "Failed (Bad APDU)"; exit -1; fi
+	local update_slot_errcode=`echo "${update_slot}"| grep "Received " | tail -n 1`
+	echo "${update_slot_errcode}"| grep 'Received (SW1=0x90, SW2=0x00)' > /dev/null
+	if [ "${?}" -ne 0 ]; then
+		echo "failed [${card_slot_errcode}]"
 		exit -1
 	fi
 	echo "OK"
@@ -213,7 +309,7 @@ update_pin_emv() {
 # Execute action
 case "${PSTOPT_ACTION}" in
 	addkey )
-		echo "Hello"
+		update_key_slot "${PIN_ADMIN}" "${SLOT_NUM}" "${KEY_HEX}"
 		;;
 	printinfo )
 		display_info "${PIN_ADMIN}"
