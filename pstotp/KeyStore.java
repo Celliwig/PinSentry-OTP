@@ -7,6 +7,7 @@ package pstotp;
 import javacard.framework.ISO7816;
 import javacard.framework.ISOException;
 import javacard.framework.JCSystem;
+import javacard.framework.OwnerPIN;
 import javacard.framework.Util;
 import javacard.security.MessageDigest;
 import javacard.security.RandomData;
@@ -17,33 +18,42 @@ public class KeyStore {
 	public static final short HMAC_BUFFER_SIZE_BYTES = (short) 128;					// Size of buffer used to generate HMAC digest
 	public static final short CARDID_SIZE_BYTES = 16;						// CardID size in bytes
 
-	private KeySlot[] keys;										// OTP key store
-	private byte[] ipad = null;									// HMAC inner padding
-	private byte[] opad = null;									// HMAC outer padding
-	private byte[] hmacBuf = null;
-	private RandomData rng_alg = null;								// Random Number Generator
-	private MessageDigest sha1 = null;								// SHA1 methods
-	private byte[] cardID = null;									// Unique ID used to 'auth' transactions
+	public static final byte ACCESS_PIN_LEN = 4;
+	public static final byte ACCESS_PIN_LEN_BYTES = ACCESS_PIN_LEN/2;
+
+	private static KeySlot[] keys;									// OTP key store
+	private static byte[] ipad = null;								// HMAC inner padding
+	private static byte[] opad = null;								// HMAC outer padding
+	private static byte[] hmacBuf = null;
+	private static RandomData rng_alg = null;							// Random Number Generator
+	private static MessageDigest sha1 = null;							// SHA1 methods
+	protected static OwnerPIN AccessPIN;
+	private static byte[] cardID = null;								// Unique ID used to 'auth' transactions
 
 	public KeyStore() {
-		ipad = JCSystem.makeTransientByteArray(KeySlot.MAX_KEY_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
-		opad = JCSystem.makeTransientByteArray(KeySlot.MAX_KEY_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
-		hmacBuf = JCSystem.makeTransientByteArray(HMAC_BUFFER_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
+		if (cardID == null) {
+			ipad = JCSystem.makeTransientByteArray(KeySlot.MAX_KEY_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
+			opad = JCSystem.makeTransientByteArray(KeySlot.MAX_KEY_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
+			hmacBuf = JCSystem.makeTransientByteArray(HMAC_BUFFER_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
 
-		rng_alg = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
+			rng_alg = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
 
-		keys = new KeySlot[KeyStore.NUM_KEY_SLOTS];
-		for (short i = 0; i < KeyStore.NUM_KEY_SLOTS; i++) {
-			keys[i] = new KeySlot();
-			// Initialise key slot with random data
-			//rng_alg.generateData(keys[i].key, (short) 0, KeySlot.MAX_KEY_SIZE_BYTES);
+			keys = new KeySlot[KeyStore.NUM_KEY_SLOTS];
+			for (short i = 0; i < KeyStore.NUM_KEY_SLOTS; i++) {
+				keys[i] = new KeySlot();
+				// Initialise key slot with random data
+				//rng_alg.generateData(keys[i].key, (short) 0, KeySlot.MAX_KEY_SIZE_BYTES);
+			}
+
+			sha1 = MessageDigest.getInstance(MessageDigest.ALG_SHA, false);
+
+			AccessPIN = new OwnerPIN((byte) 3, ACCESS_PIN_LEN_BYTES);
+			AccessPIN.update(new byte[] { 0x12, 0x34 }, (short) 0, ACCESS_PIN_LEN_BYTES);
+
+			// Create a unique ID for the card
+			cardID = new byte[KeyStore.CARDID_SIZE_BYTES];
+			rng_alg.generateData(cardID, (short) 0, KeyStore.CARDID_SIZE_BYTES);
 		}
-
-		sha1 = MessageDigest.getInstance(MessageDigest.ALG_SHA, false);
-
-		// Create a unique ID for the card
-		cardID = new byte[KeyStore.CARDID_SIZE_BYTES];
-		rng_alg.generateData(cardID, (short) 0, KeyStore.CARDID_SIZE_BYTES);
 	}
 
 //////////////////////////////////////////////////////////////////////////////////////////
