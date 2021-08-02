@@ -15,6 +15,7 @@ public class KeyStore {
 	//public static final short NUM_KEY_SLOTS = (short) 512;					// Number of key slots to create
 	public static final short NUM_KEY_SLOTS = (short) 16;
 	public static final short HMAC_BUFFER_SIZE_BYTES = (short) 128;					// Size of buffer used to generate HMAC digest
+	public static final short CARDID_SIZE_BYTES = 16;						// CardID size in bytes
 
 	private KeySlot[] keys;										// OTP key store
 	private byte[] ipad = null;									// HMAC inner padding
@@ -22,6 +23,7 @@ public class KeyStore {
 	private byte[] hmacBuf = null;
 	private RandomData rng_alg = null;								// Random Number Generator
 	private MessageDigest sha1 = null;								// SHA1 methods
+	private byte[] cardID = null;									// Unique ID used to 'auth' transactions
 
 	public KeyStore() {
 		ipad = JCSystem.makeTransientByteArray(KeySlot.MAX_KEY_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
@@ -30,16 +32,80 @@ public class KeyStore {
 
 		rng_alg = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
 
-		keys = new KeySlot[NUM_KEY_SLOTS];
+		keys = new KeySlot[KeyStore.NUM_KEY_SLOTS];
 		for (short i = 0; i < KeyStore.NUM_KEY_SLOTS; i++) {
 			keys[i] = new KeySlot();
 			// Initialise key slot with random data
-			//rng_alg.generateData(keys[i].key,(short) 0, KeySlot.MAX_KEY_SIZE_BYTES);
+			//rng_alg.generateData(keys[i].key, (short) 0, KeySlot.MAX_KEY_SIZE_BYTES);
 		}
 
 		sha1 = MessageDigest.getInstance(MessageDigest.ALG_SHA, false);
+
+		// Create a unique ID for the card
+		cardID = new byte[KeyStore.CARDID_SIZE_BYTES];
+		rng_alg.generateData(cardID, (short) 0, KeyStore.CARDID_SIZE_BYTES);
 	}
 
+//////////////////////////////////////////////////////////////////////////////////////////
+//					Card Methods					//
+//////////////////////////////////////////////////////////////////////////////////////////
+// Display card info
+	public short getCardInfo(byte[] outBuffer, short outOffset) {
+		short retVal = 0;
+
+		// Copy card ID to output
+		outBuffer[(short) (outOffset+retVal)] = (byte) KeyStore.CARDID_SIZE_BYTES;
+		retVal += 1;
+		Util.arrayCopyNonAtomic(cardID, (short) 0, outBuffer, (short) (outOffset+retVal), KeyStore.CARDID_SIZE_BYTES);
+		retVal += KeyStore.CARDID_SIZE_BYTES;
+
+		// Copy number of key slots to output
+		Util.setShort(outBuffer, (short) (outOffset+retVal), KeyStore.NUM_KEY_SLOTS);
+		retVal += 2;
+
+		return retVal;
+	}
+
+// Check action has valid hash
+	public boolean checkHash(byte[] data, short dataOffset, short dataLength, byte[] hash, short hashOffset, short hashLength) {
+		short newHashLen;
+
+		// Check if this will overrun buffer
+		if (((short) (dataLength + KeyStore.CARDID_SIZE_BYTES)) >= KeyStore.HMAC_BUFFER_SIZE_BYTES) return false;
+
+		// Concat data
+		Util.arrayCopyNonAtomic(data, dataOffset, hmacBuf, (short) 0, dataLength);
+		Util.arrayCopyNonAtomic(cardID, (short) 0, hmacBuf, dataLength, KeyStore.CARDID_SIZE_BYTES);
+
+		// Generate hash
+		newHashLen = sha1Hash(hmacBuf, (short) 0, (short) (dataLength + KeyStore.CARDID_SIZE_BYTES), hmacBuf, (short) 0);
+
+		// Compare hash values
+		if (newHashLen != hashLength) return false;
+		if (Util.arrayCompare(hmacBuf, (short) 0, hash, hashOffset, newHashLen) == 0) return true;
+		return false;
+	}
+
+// Update a particular key slot with new key data after checking the SHA1 hash of the key
+	public boolean updateSlot(byte[] slotKeyData, short slotKeyOffset, short slotKeyLength, byte[] hash, short hashOffset, short hashLength) {
+		short slotNum;
+
+		// Check hash is correct
+		if (!checkHash(slotKeyData, slotKeyOffset, slotKeyLength, hash, hashOffset, hashLength)) return false;
+		// Check if data is long enough
+		if (slotKeyLength < 3) return false;
+
+		// Get slot number
+		slotNum = (short) (slotKeyData[slotKeyOffset] << 8);
+		slotNum = (short) (slotNum + slotKeyData[(short) (slotKeyOffset + 1)]);
+		// Check slot number valid
+		if ((slotNum < 0) || (slotNum >= KeyStore.NUM_KEY_SLOTS)) return false;
+
+		return keys[slotNum].update(slotKeyData, (short) (slotKeyOffset+2), (short) (slotKeyLength-2));
+	}
+
+//// Generate TOTP response for the supplied slot number/data
+//	public
 
 //////////////////////////////////////////////////////////////////////////////////////////
 //					SHA1 Methods					//
@@ -52,7 +118,7 @@ public class KeyStore {
 
 // Use the SHA1 algo to create an HMAC for the supplied key/data pair
 	public short sha1HMAC(byte[] key, short keyOffset, short keyLength, byte[] data, short dataOffset, short dataLength, byte[] outBuffer, short outOffset) {
-		short hash_len;
+		short hashLen;
 
 		// If keyLength is greater than maximum KeySlot.MAX_KEY_SIZE_BYTES, SHA1 the key
 		if (keyLength > KeySlot.MAX_KEY_SIZE_BYTES) {
@@ -87,29 +153,29 @@ public class KeyStore {
 		Util.arrayCopyNonAtomic(data, dataOffset, hmacBuf, KeySlot.MAX_KEY_SIZE_BYTES, dataLength);
 
 		sha1.reset();
-		hash_len = sha1.doFinal(hmacBuf, (short) 0, (short) (KeySlot.MAX_KEY_SIZE_BYTES + dataLength), hmacBuf, KeySlot.MAX_KEY_SIZE_BYTES);
+		hashLen = sha1.doFinal(hmacBuf, (short) 0, (short) (KeySlot.MAX_KEY_SIZE_BYTES + dataLength), hmacBuf, KeySlot.MAX_KEY_SIZE_BYTES);
 
 		// Outer
 		Util.arrayCopyNonAtomic(opad, (short) 0, hmacBuf, (short) 0, KeySlot.MAX_KEY_SIZE_BYTES);
 
 		sha1.reset();
-		hash_len = sha1.doFinal(hmacBuf, (short) 0, (short) (64 + hash_len), outBuffer, outOffset);
+		hashLen = sha1.doFinal(hmacBuf, (short) 0, (short) (64 + hashLen), outBuffer, outOffset);
 
-		return hash_len;
+		return hashLen;
 	}
 
 // Use the SHA1 algo to create an HMAC based TOTP value for the supplied key/data pair
 	public short sha1HMACTOTP(byte[] key, short keyOffset, short keyLength, byte[] data, short dataOffset, short dataLength, byte[] outBuffer, short outOffset) {
 		byte offset, compVal;
-		short hash_len;
+		short hashLen;
 		short totpResponse[] = JCSystem.makeTransientShortArray((short) 4, JCSystem.CLEAR_ON_DESELECT);	// Use shorts to hold byte values (allows for <0)
 		short totpDivisor[] = JCSystem.makeTransientShortArray((short) 4, JCSystem.CLEAR_ON_DESELECT);	// This is because no integer type available
 
 		// Generate SHA1 HMAC
-		hash_len = sha1HMAC(key, keyOffset, keyLength, data, dataOffset, dataLength, hmacBuf, (short) 0);
+		hashLen = sha1HMAC(key, keyOffset, keyLength, data, dataOffset, dataLength, hmacBuf, (short) 0);
 
 		// Get offset
-		offset = (byte) (hmacBuf[(short) (hash_len - 1)] & 0x0f);
+		offset = (byte) (hmacBuf[(short) (hashLen - 1)] & 0x0f);
 		// Drop most significant bit
 		hmacBuf[offset] = (byte) (hmacBuf[offset] & 0x7f);
 
