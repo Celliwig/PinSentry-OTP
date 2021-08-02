@@ -37,36 +37,34 @@ import javacard.framework.APDU;
 import javacard.framework.Applet;
 import javacard.framework.ISOException;
 import javacard.framework.JCSystem;
-import javacard.framework.OwnerPIN;
 import javacard.framework.Util;
 import javacard.security.RandomData;
 
 public class PinSentryTOTP extends Applet implements EMVConstants {
 
-	final OwnerPIN pin;
-	final RandomData randomData;
-	final EMVCrypto theCrypto;
-	final EMVProtocolState protocolState;
-	final EMVStaticData staticData;
+	private final RandomData randomData;
+	private final EMVCrypto theCrypto;
+	protected final EMVProtocolState protocolState;
+	protected final EMVStaticData staticData;
+	private final KeyStore TOTPKeys;
 
 	/*
 	 * Transient byte array for constructing APDU responses.
 	 * We could have used the APDU buffer for this, but then we have to be careful not to
 	 * overwrite any info in the instruction APDU that we still need.
 	 */
-	private final byte[] response;
-
+	private final byte[] Response;
 
 	private PinSentryTOTP() {
-		response = JCSystem.makeTransientByteArray((short)256, JCSystem.CLEAR_ON_DESELECT);
+		Response = JCSystem.makeTransientByteArray((short)256, JCSystem.CLEAR_ON_DESELECT);
 
-		pin = new OwnerPIN((byte) 3, (byte) 2);
-		pin.update(new byte[] { (byte) 0x12, (byte) 0x34 }, (short) 0, (byte) 2);
 		randomData = RandomData.getInstance(RandomData.ALG_PSEUDO_RANDOM);
 
 		protocolState = new EMVProtocolState(this);
 		staticData = new EMVStaticData();
 		theCrypto = new EMVCrypto(this);
+
+		TOTPKeys = new KeyStore();
 	}
 
 	/*
@@ -167,7 +165,7 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 		if (apduBuffer[OFFSET_P2] != (byte) (0x80)) {
 			ISOException.throwIt(SW_WRONG_P1P2); // we only support transaction_data PIN
 		}
-		if (pin.getTriesRemaining() == 0)
+		if (TOTPKeys.AccessPIN.getTriesRemaining() == 0)
 		{
 			ISOException.throwIt((short) 0x6983); // PIN blocked
 			return;
@@ -177,14 +175,14 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 		 * to be coded in the same way as in the APDU, ie. using 4 bit words.
 		 */
 
-		if (pin.check(apduBuffer, (short) (OFFSET_CDATA + 1), (byte) 2))
+		if (TOTPKeys.AccessPIN.check(apduBuffer, (short) (OFFSET_CDATA + 1), (byte) 2))
 		{
 			protocolState.setCVMPerformed(PLAINTEXT_PIN);
 			apdu.setOutgoingAndSend((short) 0, (short) 0); // return 9000
 		}
 		else
 		{
-			ISOException.throwIt((short) ((short) (0x63C0) + (short) pin.getTriesRemaining()));
+			ISOException.throwIt((short) ((short) (0x63C0) + (short) TOTPKeys.AccessPIN.getTriesRemaining()));
 		}
 	}
 
@@ -227,7 +225,7 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 
 			case 0x17: // PIN Try Counter
 				apduBuffer[OFFSET_P2 + 1] = (byte) 0x01; // length 1 byte
-				apduBuffer[OFFSET_P2 + 2] = pin.getTriesRemaining(); // value
+				apduBuffer[OFFSET_P2 + 2] = TOTPKeys.AccessPIN.getTriesRemaining(); // value
 				// send the 4 byte TLV for PIN Try counter
 				apdu.setOutgoingAndSend(OFFSET_P1, (short) 4);
 				break;
@@ -247,29 +245,29 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 	}
 
 	private void readRecord(APDU apdu, byte[] apduBuffer) {
-		staticData.readRecord(apduBuffer, response);
+		staticData.readRecord(apduBuffer, Response);
 
 		apdu.setOutgoing();
-		apdu.setOutgoingLength((short)(response[1]+2));
-		apdu.sendBytesLong(response, (short)0, (short)(response[1]+2));
+		apdu.setOutgoingLength((short)(Response[1]+2));
+		apdu.sendBytesLong(Response, (short)0, (short)(Response[1]+2));
 	}
 
 	private void getProcessingOptions(APDU apdu, byte[] apduBuffer) {
 		// TODO Check APDU? PDOL is not checked at the moment
 
 		// Return data using Format 1
-		response[0] = (byte) 0x80; // Tag
-		response[1] = (byte) 0x06; // Length
+		Response[0] = (byte) 0x80; // Tag
+		Response[1] = (byte) 0x06; // Length
 
 		// 2 byte Application Interchange Profile
-		Util.setShort(response, (short)2, staticData.getAIP());
+		Util.setShort(Response, (short)2, staticData.getAIP());
 
 		// 4 byte Application File Locator
-		Util.arrayCopyNonAtomic(staticData.getAFL(), (short)0, response, (short)4, (short)4);
+		Util.arrayCopyNonAtomic(staticData.getAFL(), (short)0, Response, (short)4, (short)4);
 
 		apdu.setOutgoing();
 		apdu.setOutgoingLength((short)8);
-		apdu.sendBytesLong(response, (short)0, (short)8);
+		apdu.sendBytesLong(Response, (short)0, (short)8);
 	}
 
 	public void generateFirstAC(APDU apdu, byte[] apduBuffer) {
@@ -282,12 +280,12 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 			ISOException.throwIt(SW_WRONG_P1P2);
 		}
 
-		theCrypto.generateFirstACReponse(cid, apduBuffer, staticData.getCDOL1DataLength(), null, (short)0, response, (short)0);
+		theCrypto.generateFirstACReponse(cid, apduBuffer, staticData.getCDOL1DataLength(), null, (short)0, Response, (short)0);
 		protocolState.setFirstACGenerated(cid);
 
 		apdu.setOutgoing();
-		apdu.setOutgoingLength((short)(response[1]+2));
-		apdu.sendBytesLong(response, (short)0, (short)(response[1]+2));
+		apdu.setOutgoingLength((short)(Response[1]+2));
+		apdu.sendBytesLong(Response, (short)0, (short)(Response[1]+2));
 	}
 
 	public void generateSecondAC(APDU apdu, byte[] apduBuffer) {
@@ -300,11 +298,11 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 			ISOException.throwIt(SW_WRONG_P1P2);
 		}
 
-		theCrypto.generateSecondACReponse(cid, apduBuffer, staticData.getCDOL2DataLength(), null, (short)0, response, (short)0);
+		theCrypto.generateSecondACReponse(cid, apduBuffer, staticData.getCDOL2DataLength(), null, (short)0, Response, (short)0);
 		protocolState.setSecondACGenerated(cid);
 
 		apdu.setOutgoing();
-		apdu.setOutgoingLength((short)(response[1]+2));
-		apdu.sendBytesLong(response, (short)0, (short)(response[1]+2));
+		apdu.setOutgoingLength((short)(Response[1]+2));
+		apdu.sendBytesLong(Response, (short)0, (short)(Response[1]+2));
 	}
 }
