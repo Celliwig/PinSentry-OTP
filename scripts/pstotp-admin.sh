@@ -9,6 +9,7 @@ SCRIPTNAME=`basename ${0}`
 usage() {
 	echo "${SCRIPTNAME}: PSTOTP Admin Tool"
 	echo "	-a		Add key"
+	echo "	-e		Update EMV PIN"
 	echo "	-k <key>	Key"
 	echo "	-h		Help text (this)"
 	echo "	-i		Print card info"
@@ -49,6 +50,9 @@ while getopts ":htaie:k:m:n:s:" opt; do
 			;;
 	esac
 done
+if [[ "${PSTOPT_ACTION}" == "" ]]; then
+	usage
+fi
 
 check_pin() {
 	local pin_txt=${1}
@@ -177,6 +181,35 @@ update_pin() {
 	echo "OK"
 }
 
+# Update EMV PIN
+update_pin_emv() {
+	local pin_txt="${1}"
+	local pin_new="${2}"
+	check_pin "${pin_txt}" 8
+	check_pin "${pin_new}" 4
+	check_auth "${pin_txt}"
+	local card_info_reply=`fetch_cardinfo "${pin_txt}"`
+	local cardid=`fetch_cardinfo_cardid "${card_info_reply}"`
+
+	# Build hash data
+	local hash_data=`echo -n "${pin_new}${cardid}"| xxd -r -p - |sha1sum | sed "s|  -||g"`
+	# Build command
+	local update_pin_cmd=`printf "%02x%s%02x%s" $((4/2)) ${pin_new} $((${#hash_data}/2)) ${hash_data}`
+	local update_pin_cmd=`printf "00010300%02x%s" $((${#update_pin_cmd}/2)) ${update_pin_cmd}`
+
+	# Execute command
+	echo -n "Update EMV PIN: "
+	local update_pin=`opensc-tool -s "00A404000da00000000380022e61646d696e" -s "0001010004${pin_txt}" -s "${update_pin_cmd}" 2>/dev/null`
+	if [ ${?} -ne 0 ]; then echo "Failed (Bad APDU)"; exit -1; fi
+	local update_pin_errcode=`echo "${update_pin}"| grep "Received " | tail -n 1`
+	echo "${update_pin_errcode}"| grep 'Received (SW1=0x90, SW2=0x00)' > /dev/null
+	if [ "${?}" -ne 0 ]; then
+		echo "failed [${card_auth_errcode}]"
+		exit -1
+	fi
+	echo "OK"
+}
+
 # Execute action
 case "${PSTOPT_ACTION}" in
 	addkey )
@@ -189,6 +222,6 @@ case "${PSTOPT_ACTION}" in
 		update_pin "${PIN_ADMIN}" "${PIN_NEW}"
 		;;
 	updatepinemv )
-		echo "Here"
+		update_pin_emv "${PIN_ADMIN}" "${PIN_NEW}"
 		;;
 esac
