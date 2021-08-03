@@ -29,6 +29,7 @@ public class KeyStore {
 	private static MessageDigest sha1 = null;							// SHA1 methods
 	protected static OwnerPIN AccessPIN;
 	private static byte[] cardID = null;								// Unique ID used to 'auth' transactions
+	private static short selectedSlot = 0;
 
 	public KeyStore() {
 		if (cardID == null) {
@@ -113,8 +114,18 @@ public class KeyStore {
 		return keys[slotNum].update(slotKeyData, (short) (slotKeyOffset+2), (short) (slotKeyLength-2));
 	}
 
-//// Generate TOTP response for the supplied slot number/data
-//	public
+// Set the slot to use for TOTP operations
+	public boolean setSlot(short slotNum) {
+		if (slotNum >= KeyStore.NUM_KEY_SLOTS) return false;
+		selectedSlot = slotNum;
+		return true;
+	}
+
+// Generate TOTP response for the supplied data
+	public void getTOTPResponse(byte[] data, short dataOffset, short dataLength, byte[] outBuffer, short outOffset) {
+		KeySlot toptKey = keys[selectedSlot];
+		sha1HMACTOTP(toptKey.getKey(), (short) 0, toptKey.getKeySize(), data, dataOffset, dataLength, outBuffer, outOffset);
+	}
 
 //////////////////////////////////////////////////////////////////////////////////////////
 //					SHA1 Methods					//
