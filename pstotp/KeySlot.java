@@ -11,20 +11,20 @@ import javacard.framework.Util;
 public class KeySlot {
 	public static final short MAX_KEY_SIZE_BYTES = (short) 64;
 
-	private byte[] key = null;
-	private short keysize;
+	private byte[] slotKey = null;
+	private short slotKeySize;
 
 	public KeySlot() {
-		key = new byte[MAX_KEY_SIZE_BYTES];
-		keysize = (short) 0;
+		slotKey = new byte[MAX_KEY_SIZE_BYTES];
+		slotKeySize = (short) 0;
 	}
 
 	public byte[] getKey() {
-		return key;
+		return slotKey;
 	}
 
 	public short getKeySize() {
-		return keysize;
+		return slotKeySize;
 	}
 
 	public boolean update(byte[] keyData, short keyOffset, short keySize) {
@@ -32,9 +32,10 @@ public class KeySlot {
 		if (keySize >= KeySlot.MAX_KEY_SIZE_BYTES) return false;
 
 		// Copy key data to slot
-		for (short i = 0; i < KeySlot.MAX_KEY_SIZE_BYTES; i++) {
-			key[i] = keyData[(short) (i + keyOffset)];
+		for (short i = 0; i < keySize; i++) {
+			slotKey[i] = keyData[(short) (i + keyOffset)];
 		}
+		slotKeySize = keySize;
 
 		return true;
 	}
