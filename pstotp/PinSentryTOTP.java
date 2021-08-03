@@ -43,10 +43,10 @@ import javacard.security.RandomData;
 public class PinSentryTOTP extends Applet implements EMVConstants {
 
 	private final RandomData randomData;
-	private final EMVCrypto theCrypto;
 	protected final EMVProtocolState protocolState;
 	protected final EMVStaticData staticData;
-	private final KeyStore TOTPKeys;
+	private final KeyStore totpKeys;
+	private final byte[] totpData;
 
 	/*
 	 * Transient byte array for constructing APDU responses.
@@ -56,15 +56,15 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 	private final byte[] Response;
 
 	private PinSentryTOTP() {
-		Response = JCSystem.makeTransientByteArray((short)256, JCSystem.CLEAR_ON_DESELECT);
+		Response = JCSystem.makeTransientByteArray((short) 256, JCSystem.CLEAR_ON_DESELECT);
 
 		randomData = RandomData.getInstance(RandomData.ALG_PSEUDO_RANDOM);
 
 		protocolState = new EMVProtocolState(this);
 		staticData = new EMVStaticData();
-		theCrypto = new EMVCrypto(this);
 
-		TOTPKeys = new KeyStore();
+		totpKeys = new KeyStore();
+		totpData = JCSystem.makeTransientByteArray((short) 8, JCSystem.CLEAR_ON_DESELECT);
 	}
 
 	/*
@@ -165,7 +165,7 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 		if (apduBuffer[OFFSET_P2] != (byte) (0x80)) {
 			ISOException.throwIt(SW_WRONG_P1P2); // we only support transaction_data PIN
 		}
-		if (TOTPKeys.AccessPIN.getTriesRemaining() == 0)
+		if (totpKeys.AccessPIN.getTriesRemaining() == 0)
 		{
 			ISOException.throwIt((short) 0x6983); // PIN blocked
 			return;
@@ -175,14 +175,14 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 		 * to be coded in the same way as in the APDU, ie. using 4 bit words.
 		 */
 
-		if (TOTPKeys.AccessPIN.check(apduBuffer, (short) (OFFSET_CDATA + 1), (byte) 2))
+		if (totpKeys.AccessPIN.check(apduBuffer, (short) (OFFSET_CDATA + 1), (byte) 2))
 		{
 			protocolState.setCVMPerformed(PLAINTEXT_PIN);
 			apdu.setOutgoingAndSend((short) 0, (short) 0); // return 9000
 		}
 		else
 		{
-			ISOException.throwIt((short) ((short) (0x63C0) + (short) TOTPKeys.AccessPIN.getTriesRemaining()));
+			ISOException.throwIt((short) ((short) (0x63C0) + (short) totpKeys.AccessPIN.getTriesRemaining()));
 		}
 	}
 
@@ -225,7 +225,7 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 
 			case 0x17: // PIN Try Counter
 				apduBuffer[OFFSET_P2 + 1] = (byte) 0x01; // length 1 byte
-				apduBuffer[OFFSET_P2 + 2] = TOTPKeys.AccessPIN.getTriesRemaining(); // value
+				apduBuffer[OFFSET_P2 + 2] = totpKeys.AccessPIN.getTriesRemaining(); // value
 				// send the 4 byte TLV for PIN Try counter
 				apdu.setOutgoingAndSend(OFFSET_P1, (short) 4);
 				break;
@@ -270,6 +270,11 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 		apdu.sendBytesLong(Response, (short)0, (short)8);
 	}
 
+
+	// Card Risk Management Data Object List 1 (CDOL1) [Size: 21]
+	// 0x9F, 0x02, 0x06, 0x9F, 0x03, 0x06, 0x9F, 0x1A, 0x02, 0x95, 0x05, 0x5F, 0x2A, 0x02, 0x9A, 0x03, 0x9C, 0x01, 0x9F, 0x37, 0x04,
+	// 0x9F02: Transaction Value (APDU Offset: 0x05-0x0a)
+	// 0x9F37: Reference/Account (APDU Offset: 0x1e-0x21)
 	public void generateFirstAC(APDU apdu, byte[] apduBuffer) {
 		// First 2 bits of P1 specify the type
 		// These bits also have to be returned, as the Cryptogram Information Data (CID);
@@ -280,8 +285,24 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 			ISOException.throwIt(SW_WRONG_P1P2);
 		}
 
-		theCrypto.generateFirstACReponse(cid, apduBuffer, staticData.getCDOL1DataLength(), null, (short)0, Response, (short)0);
+		generateReponse(cid, apduBuffer, Response, (short) 0);
 		protocolState.setFirstACGenerated(cid);
+
+		// Get key slot number, it's sent as BCD
+		short slotNum = (short) ((bcdShort(apduBuffer, (short) 0x20) * 100) + bcdShort(apduBuffer, (short) 0x21));
+		if (!totpKeys.setSlot(slotNum)) ISOException.throwIt(SW_WRONG_LENGTH);
+
+		// Generate TOTP response
+		totpData[0] = 0x00;
+		totpData[1] = 0x00;
+		totpData[2] = apduBuffer[5];
+		totpData[3] = apduBuffer[6];
+		totpData[4] = apduBuffer[7];
+		totpData[5] = apduBuffer[8];
+		totpData[6] = apduBuffer[9];
+		totpData[7] = apduBuffer[10];
+
+		totpKeys.getTOTPResponse(totpData, (short) 0, (short) 8, Response, (short) 9);
 
 		apdu.setOutgoing();
 		apdu.setOutgoingLength((short)(Response[1]+2));
@@ -298,11 +319,44 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 			ISOException.throwIt(SW_WRONG_P1P2);
 		}
 
-		theCrypto.generateSecondACReponse(cid, apduBuffer, staticData.getCDOL2DataLength(), null, (short)0, Response, (short)0);
+		generateReponse(cid, apduBuffer, Response, (short) 0);
 		protocolState.setSecondACGenerated(cid);
 
 		apdu.setOutgoing();
 		apdu.setOutgoingLength((short)(Response[1]+2));
 		apdu.sendBytesLong(Response, (short)0, (short)(Response[1]+2));
+	}
+
+	public void generateReponse(byte cid, byte[] apduBuffer, byte[] response, short offset) {
+		response[offset] = (byte) 0x80; // Tag for Format 1 cryptogram
+
+		// Length: 1 byte CID + 2 byte ATC + 8 byte AC = 11
+		response[(short)(offset+1)] = (byte)11;
+
+		// 1 byte CID, ie the type of AC returned
+		response[(short)(offset+2)] = cid;
+
+		// 2 byte ATC, at offset 3:
+		Util.setShort(response, (short)(offset+3), protocolState.getATC());
+
+		response[(short)(offset+5)] = (byte) 0x00;
+		response[(short)(offset+6)] = (byte) 0x00;
+		response[(short)(offset+7)] = (byte) 0x00;
+		response[(short)(offset+8)] = (byte) 0x00;
+// Only the lower 26 bits used
+		response[(short)(offset+9)] = (byte) 0x00;
+		response[(short)(offset+10)] = (byte) 0x00;
+		response[(short)(offset+11)] = (byte) 0x00;
+		response[(short)(offset+12)] = (byte) 0x00;
+
+		// Force an IAD of 18 bytes consisting of all 0s
+		// Needed for EMV-CAP reader
+		response[(short)(offset+1)] = (byte)29;
+		Util.arrayFillNonAtomic(response, (short)(offset+13), (short)18, (byte)0x0);
+	}
+
+// Convert byte in packed BCD format to short
+	private byte bcdShort(byte[] data, short dataOffset) {
+		return (byte) ((((data[dataOffset] & 0xf0) >> 4) * 10) + (data[dataOffset] & 0x0f));
 	}
 }
