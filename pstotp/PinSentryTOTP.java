@@ -289,19 +289,19 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 		protocolState.setFirstACGenerated(cid);
 
 		// Get key slot number, it's sent as BCD
-		short slotNum = (short) ((bcdShort(apduBuffer, (short) 0x20) * 100) + bcdShort(apduBuffer, (short) 0x21));
-		if (!totpKeys.setSlot(slotNum)) ISOException.throwIt(SW_WRONG_LENGTH);
+		if ((apduBuffer[0x1e] > 0) || (apduBuffer[0x1f] > 0)) {
+			ISOException.throwIt(SW_WRONG_LENGTH);
+		} else {
+			short slotNum = (short) ((convertBCD2Byte(apduBuffer, (short) 0x20) * 100) + convertBCD2Byte(apduBuffer, (short) 0x21));
+			if (!totpKeys.setSlot(slotNum)) ISOException.throwIt(SW_WRONG_LENGTH);
+		}
 
-		// Generate TOTP response
+		// Convert TOTP value from BCD to integer
 		totpData[0] = 0x00;
 		totpData[1] = 0x00;
-		totpData[2] = apduBuffer[5];
-		totpData[3] = apduBuffer[6];
-		totpData[4] = apduBuffer[7];
-		totpData[5] = apduBuffer[8];
-		totpData[6] = apduBuffer[9];
-		totpData[7] = apduBuffer[10];
+		convertBCD2Int(apduBuffer, (short) 5, (short) 6, totpData, (short) 2);
 
+		// Generate TOTP response
 		totpKeys.getTOTPResponse(totpData, (short) 0, (short) 8, Response, (short) 9);
 
 		apdu.setOutgoing();
@@ -355,8 +355,50 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 		Util.arrayFillNonAtomic(response, (short)(offset+13), (short)18, (byte)0x0);
 	}
 
-// Convert byte in packed BCD format to short
-	private byte bcdShort(byte[] data, short dataOffset) {
-		return (byte) ((((data[dataOffset] & 0xf0) >> 4) * 10) + (data[dataOffset] & 0x0f));
+// Convert byte in packed BCD format to integer byte
+	private short convertBCD2Byte(byte[] data, short dataOffset) {
+		return (short) ((((data[dataOffset] & (short) 0x00f0) >> 4) * 10) + (data[dataOffset] & (short) 0x000f));
+	}
+
+// Convert an array of bytes in BCD format, to integer value (max 8 bytes)
+	private boolean convertBCD2Int(byte[] bcdData, short bcdDataOffset, short bcdDataLength, byte[] outBuffer, short outBufferOffset) {
+		short[] intCascade = JCSystem.makeTransientShortArray((short) 8, JCSystem.CLEAR_ON_DESELECT);
+		short bcdInt, overflow, digitOffset;
+		byte i, j;
+
+		// Check parameters
+		if ((bcdDataLength < 1) || (bcdDataLength > 8)) return false;
+
+		// Clear store
+		for (i = 0; i < 8; i++) {
+			intCascade[i] = (short) 0x00;
+		}
+
+		// Cycle through BCD data
+		for (i = 0; i < bcdDataLength; i++) {
+			// Convert a byte of BCD data
+			bcdInt = convertBCD2Byte(bcdData, (short) (bcdDataOffset + i));
+
+			overflow = (short) 0x00;
+			// Mutiply each byte by 100, shifting any overflow bits to the next byte
+			// Reverse order as it's shifting results left
+			for (j = 7; j >= 0; j--) {
+				intCascade[j] = (short) ((intCascade[j] * 100) + overflow);
+				// Add value from BCD digits
+				if (j == 7) intCascade[j] += bcdInt;
+				// Calculate value to overflow to next byte
+				overflow = (short) ((intCascade[j] & (short) 0xff00) >> 8);
+				// Clear existing overflowen bits
+				intCascade[j] = (short) (intCascade[j] & (short) 0x00ff);
+			}
+		}
+
+		// Copy data to output buffer
+		digitOffset = (short) (8 - bcdDataLength);
+		for (i = 0; i < bcdDataLength; i++) {
+			outBuffer[(short) (outBufferOffset + i)] = (byte) (intCascade[(short) (digitOffset + i)] & 0x00ff);
+		}
+
+		return true;
 	}
 }
