@@ -174,8 +174,9 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 		/* EP: For the code below to be correct, digits in the PIN object need
 		 * to be coded in the same way as in the APDU, ie. using 4 bit words.
 		 */
-
-		if (totpKeys.AccessPIN.check(apduBuffer, (short) (OFFSET_CDATA + 1), (byte) 2))
+		// Get PIN length in bytes, 2 digits per byte, round up if odd number of digits
+		byte pinLenBytes = (byte) (((apduBuffer[OFFSET_CDATA] & 0x0f) / 2) + ((apduBuffer[OFFSET_CDATA] & 0x0f) % 2));
+		if (totpKeys.AccessPIN.check(apduBuffer, (short) (OFFSET_CDATA + 1), pinLenBytes))
 		{
 			protocolState.setCVMPerformed(PLAINTEXT_PIN);
 			apdu.setOutgoingAndSend((short) 0, (short) 0); // return 9000
