@@ -127,6 +127,11 @@ public class KeyStore {
 		sha1HMACTOTP(toptKey.getKey(), (short) 0, toptKey.getKeySize(), data, dataOffset, dataLength, outBuffer, outOffset);
 	}
 
+// Return the current counter value for given slot
+	public short getCounterValue(short slotNum, byte[] outBuffer, short outOffset, short outLength) {
+		return keys[slotNum].getCounter(outBuffer, outOffset, outLength);
+	}
+
 //////////////////////////////////////////////////////////////////////////////////////////
 //					SHA1 Methods					//
 //////////////////////////////////////////////////////////////////////////////////////////

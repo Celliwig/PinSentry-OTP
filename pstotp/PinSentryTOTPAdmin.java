@@ -17,7 +17,7 @@
  *			01	Test SHA1 function
  *			02	Test HMAC-SHA1 function
  *			03	Test HMAC-SHA1 TOTP function
- *
+ *			FF	Get counter value of the last slot
  */
 
 package pstotp;
@@ -45,6 +45,7 @@ public class PinSentryTOTPAdmin extends Applet {
 	public static final byte P1_TEST_SHA1 = (byte) 0x01;
 	public static final byte P1_TEST_HMAC_SHA1 = (byte) 0x02;
 	public static final byte P1_TEST_HMAC_SHA1_TOTP = (byte) 0x03;
+	public static final byte P1_TEST_SLOT_COUNTER = (byte) 0xFF;
 
 	public static final byte ADMIN_PIN_LEN = 8;
 	public static final byte ADMIN_PIN_LEN_BYTES = ADMIN_PIN_LEN/2;
@@ -132,6 +133,13 @@ public class PinSentryTOTPAdmin extends Applet {
 			case P1_TEST_HMAC_SHA1_TOTP:
 				if (AdminPIN.isValidated()) {
 					testSHA1TOTP(apdu, apduBuffer);
+				} else {
+					ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+				}
+				break;
+			case P1_TEST_SLOT_COUNTER:
+				if (AdminPIN.isValidated()) {
+					testCounterUpdate(apdu, apduBuffer);
 				} else {
 					ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
 				}
@@ -370,6 +378,22 @@ public class PinSentryTOTPAdmin extends Applet {
 			} else {
 				ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 			}
+		} else {
+			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+		}
+	}
+
+// Test slot counter
+	private void testCounterUpdate(APDU apdu, byte[] apduBuffer) {
+		short lc_actual = apdu.setIncomingAndReceive();
+		byte tmpLength = apduBuffer[ISO7816.OFFSET_LC];
+
+		if ((lc_actual == (short) tmpLength) && (tmpLength == 0)) {
+			Response[0] = (byte) TOTPKeys.getCounterValue((short) (KeyStore.NUM_KEY_SLOTS - 1), Response, (short) 1, KeySlot.COUNTER_SIZE_BYTES);
+
+			apdu.setOutgoing();
+			apdu.setOutgoingLength((short) (Response[0] + 1));
+			apdu.sendBytesLong(Response, (short) 0, (short) (Response[0] + 1));
 		} else {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 		}
