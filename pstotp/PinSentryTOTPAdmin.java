@@ -116,13 +116,25 @@ public class PinSentryTOTPAdmin extends Applet {
 		case INS_TEST:
 			switch (p1) {
 			case P1_TEST_SHA1:
-				testSHA1(apdu, apduBuffer);
+				if (AdminPIN.isValidated()) {
+					testSHA1(apdu, apduBuffer);
+				} else {
+					ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+				}
 				break;
 			case P1_TEST_HMAC_SHA1:
-				testSHA1HMAC(apdu, apduBuffer);
+				if (AdminPIN.isValidated()) {
+					testSHA1HMAC(apdu, apduBuffer);
+				} else {
+					ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+				}
 				break;
 			case P1_TEST_HMAC_SHA1_TOTP:
-				testSHA1TOTP(apdu, apduBuffer);
+				if (AdminPIN.isValidated()) {
+					testSHA1TOTP(apdu, apduBuffer);
+				} else {
+					ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
+				}
 				break;
 			default:
 				ISOException.throwIt(ISO7816.SW_WRONG_P1P2);
