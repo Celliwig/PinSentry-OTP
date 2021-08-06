@@ -8,7 +8,7 @@ SCRIPTNAME=`basename ${0}`
 SLOT_NUM=""
 
 usage() {
-	echo "${SCRIPTNAME}: PSTOTP Admin Tool"
+	echo "${SCRIPTNAME}: PSOTP Admin Tool"
 	echo "	-a		Add key"
 	echo "	-e		Update EMV PIN"
 	echo "	-k <key>	Key (as hex)"

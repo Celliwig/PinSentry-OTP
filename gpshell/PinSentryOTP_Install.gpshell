@@ -11,6 +11,6 @@ delete -AID A0000000038002
 delete -AID A00000000380
 delete -AID A0000000038002
 delete -AID A00000000380022E61646D696E
-install -file build/pstotp/javacard/pstotp.cap -sdAID a000000003000000 -priv 2
+install -file build/psotp/javacard/psotp.cap -sdAID a000000003000000 -priv 2
 card_disconnect
 release_context
