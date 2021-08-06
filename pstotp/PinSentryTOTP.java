@@ -302,8 +302,8 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 		totpData[1] = 0x00;
 		convertBCD2Int(apduBuffer, (short) 5, (short) 6, totpData, (short) 2);
 
-		// Generate TOTP response
-		totpKeys.getTOTPResponse(totpData, (short) 0, (short) 8, Response, (short) 9);
+		// Generate OTP response
+		totpKeys.getOTPResponse(totpData, (short) 0, (short) 8, Response, (short) 9);
 
 		apdu.setOutgoing();
 		apdu.setOutgoingLength((short)(Response[1]+2));

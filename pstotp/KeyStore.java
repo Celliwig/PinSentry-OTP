@@ -121,10 +121,24 @@ public class KeyStore {
 		return true;
 	}
 
-// Generate TOTP response for the supplied data
-	public void getTOTPResponse(byte[] data, short dataOffset, short dataLength, byte[] outBuffer, short outOffset) {
-		KeySlot toptKey = keys[selectedSlot];
-		sha1HMACTOTP(toptKey.getKey(), (short) 0, toptKey.getKeySize(), data, dataOffset, dataLength, outBuffer, outOffset);
+// Generate OTP response for the supplied data
+	public void getOTPResponse(byte[] data, short dataOffset, short dataLength, byte[] outBuffer, short outOffset) {
+		byte dataCheck = 0;
+
+		// Get key slot
+		KeySlot optKey = keys[selectedSlot];
+
+		// Check if any data passed through
+		for (byte i = 0; i < dataLength; i++) {
+			dataCheck |= data[i];
+		}
+		// If no data passed through, and data buffer larger enough for counter
+		if ((dataCheck == 0) && (dataLength >= KeySlot.COUNTER_SIZE_BYTES)) {
+			// Use counter instead
+			dataLength = optKey.getCounter(data, dataOffset, KeySlot.COUNTER_SIZE_BYTES);
+		}
+
+		sha1HMACTOTP(optKey.getKey(), (short) 0, optKey.getKeySize(), data, dataOffset, dataLength, outBuffer, outOffset);
 	}
 
 // Return the current counter value for given slot
