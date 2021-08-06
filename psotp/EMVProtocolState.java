@@ -16,7 +16,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-package pstotp;
+package psotp;
 
 import javacard.framework.JCSystem;
 
@@ -34,7 +34,6 @@ import javacard.framework.JCSystem;
 public class EMVProtocolState implements EMVConstants {
 	
 	/* Reference back to the applet that uses this EMVCrypto object */
-	private final PinSentryTOTP theApplet;
 	private short atc;
 	private short lastOnlineATC;
 	
@@ -87,8 +86,7 @@ public class EMVProtocolState implements EMVConstants {
 		return lastOnlineATC;
 	}
 	
-	public EMVProtocolState(PinSentryTOTP x){
-		theApplet = x;
+	public EMVProtocolState(){
 		volatileState = JCSystem.makeTransientByteArray((short) 3, JCSystem.CLEAR_ON_DESELECT);
 		cvr = JCSystem.makeTransientByteArray((short) 2, JCSystem.CLEAR_ON_DESELECT);
 	}

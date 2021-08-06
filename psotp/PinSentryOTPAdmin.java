@@ -16,11 +16,11 @@
  *		FF		Test Functions
  *			01	Test SHA1 function
  *			02	Test HMAC-SHA1 function
- *			03	Test HMAC-SHA1 TOTP function
+ *			03	Test HMAC-SHA1 OTP function
  *			FF	Get counter value of the last slot
  */
 
-package pstotp;
+package psotp;
 
 import javacard.framework.ISO7816;
 import javacard.framework.APDU;
@@ -30,7 +30,7 @@ import javacard.framework.JCSystem;
 import javacard.framework.OwnerPIN;
 import javacard.framework.Util;
 
-public class PinSentryTOTPAdmin extends Applet {
+public class PinSentryOTPAdmin extends Applet {
 	public static final byte INS_PIN = (byte) 0x01;
 	public static final byte INS_KEYSTORE = (byte) 0x02;
 	public static final byte INS_TEST = (byte) 0xff;
@@ -44,23 +44,23 @@ public class PinSentryTOTPAdmin extends Applet {
 
 	public static final byte P1_TEST_SHA1 = (byte) 0x01;
 	public static final byte P1_TEST_HMAC_SHA1 = (byte) 0x02;
-	public static final byte P1_TEST_HMAC_SHA1_TOTP = (byte) 0x03;
+	public static final byte P1_TEST_HMAC_SHA1_OTP = (byte) 0x03;
 	public static final byte P1_TEST_SLOT_COUNTER = (byte) 0xFF;
 
 	public static final byte ADMIN_PIN_LEN = 8;
 	public static final byte ADMIN_PIN_LEN_BYTES = ADMIN_PIN_LEN/2;
 
 	private final OwnerPIN AdminPIN;                                                                // Applet's PIN
-	private final KeyStore TOTPKeys;								// Keystore
+	private final KeyStore OTPKeys;									// Keystore
 	private final byte[] Response;
 
-	private PinSentryTOTPAdmin() {
+	private PinSentryOTPAdmin() {
 		Response = JCSystem.makeTransientByteArray((short) 256, JCSystem.CLEAR_ON_DESELECT);
 
 		AdminPIN = new OwnerPIN((byte) 3, ADMIN_PIN_LEN_BYTES);
 		AdminPIN.update(new byte[] { 0x12, 0x34, 0x56, 0x78 }, (short) 0, ADMIN_PIN_LEN_BYTES);
 
-		TOTPKeys = new KeyStore();
+		OTPKeys = new KeyStore();
 	}
 
 	/*
@@ -69,7 +69,7 @@ public class PinSentryTOTPAdmin extends Applet {
 	 * @see javacard.framework.Applet#install(byte[], byte, byte)
 	 */
 	public static void install(byte[] buffer, short offset, byte length) {
-		(new PinSentryTOTPAdmin()).register();
+		(new PinSentryOTPAdmin()).register();
 	}
 
 	/*
@@ -130,9 +130,9 @@ public class PinSentryTOTPAdmin extends Applet {
 					ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
 				}
 				break;
-			case P1_TEST_HMAC_SHA1_TOTP:
+			case P1_TEST_HMAC_SHA1_OTP:
 				if (AdminPIN.isValidated()) {
-					testSHA1TOTP(apdu, apduBuffer);
+					testSHA1OTP(apdu, apduBuffer);
 				} else {
 					ISOException.throwIt(ISO7816.SW_SECURITY_STATUS_NOT_SATISFIED);
 				}
@@ -193,9 +193,9 @@ public class PinSentryTOTPAdmin extends Applet {
 		}
 
 		// Check PIN length, 8 digits = 4 bytes
-		if ((lc_actual == (short) tmpLength) && ((short) tmpLength == PinSentryTOTPAdmin.ADMIN_PIN_LEN_BYTES)) {
+		if ((lc_actual == (short) tmpLength) && ((short) tmpLength == PinSentryOTPAdmin.ADMIN_PIN_LEN_BYTES)) {
 			// PIN object must be coded with 4 bit words
-			if (AdminPIN.check(apduBuffer, (short) ISO7816.OFFSET_CDATA, (byte) PinSentryTOTPAdmin.ADMIN_PIN_LEN_BYTES)) {
+			if (AdminPIN.check(apduBuffer, (short) ISO7816.OFFSET_CDATA, (byte) PinSentryOTPAdmin.ADMIN_PIN_LEN_BYTES)) {
 				apdu.setOutgoingAndSend((short) 0, (short) 0);				// Return 9000
 			} else {
 				ISOException.throwIt((short) (0x63C0 + AdminPIN.getTriesRemaining()));
@@ -214,11 +214,11 @@ public class PinSentryTOTPAdmin extends Applet {
 		if ((lc_actual == (short) tmpLength) && (tmpLength > 0)) {
 			short pinLen = apduBuffer[ISO7816.OFFSET_CDATA];
 			// Check PIN length, 8 digits = 4 bytes
-			if (((short) (pinLen + 1) < tmpLength) && (pinLen == PinSentryTOTPAdmin.ADMIN_PIN_LEN_BYTES)) {
+			if (((short) (pinLen + 1) < tmpLength) && (pinLen == PinSentryOTPAdmin.ADMIN_PIN_LEN_BYTES)) {
 				short hashLen = apduBuffer[(short) (ISO7816.OFFSET_CDATA + pinLen + 1)];
 				if ((short) (pinLen + hashLen + 2) <= tmpLength) {
 					// Check hashes match
-					if (TOTPKeys.checkHash(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), pinLen,
+					if (OTPKeys.checkHash(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), pinLen,
 								apduBuffer, (short) (ISO7816.OFFSET_CDATA + pinLen + 2), hashLen)) {
 						AdminPIN.update(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), (byte) pinLen);
 						apdu.setOutgoingAndSend((short) 0, (short) 0);			// Return 9000
@@ -249,9 +249,9 @@ public class PinSentryTOTPAdmin extends Applet {
 				short hashLen = apduBuffer[(short) (ISO7816.OFFSET_CDATA + pinLen + 1)];
 				if ((short) (pinLen + hashLen + 2) <= tmpLength) {
 					// Check hashes match
-					if (TOTPKeys.checkHash(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), pinLen,
+					if (OTPKeys.checkHash(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), pinLen,
 								apduBuffer, (short) (ISO7816.OFFSET_CDATA + pinLen + 2), hashLen)) {
-						TOTPKeys.AccessPIN.update(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), (byte) pinLen);
+						OTPKeys.AccessPIN.update(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), (byte) pinLen);
 						apdu.setOutgoingAndSend((short) 0, (short) 0);			// Return 9000
 					} else {
 						ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
@@ -275,7 +275,7 @@ public class PinSentryTOTPAdmin extends Applet {
 		short lc_actual = apdu.setIncomingAndReceive();
 		if (lc_actual != 0) ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
 
-		Response[0] = (byte) TOTPKeys.getCardInfo(Response, (short) 1);
+		Response[0] = (byte) OTPKeys.getCardInfo(Response, (short) 1);
 		apdu.setOutgoing();
 		apdu.setOutgoingLength((short) (Response[0] + 1));
 		apdu.sendBytesLong(Response, (short) 0, (short) (Response[0] + 1));
@@ -291,7 +291,7 @@ public class PinSentryTOTPAdmin extends Applet {
 			if ((short) (slotKeyLen + 1) < tmpLength) {
 				short hashLen = apduBuffer[(short) (ISO7816.OFFSET_CDATA + slotKeyLen + 1)];
 				if ((short) (slotKeyLen + hashLen + 2) <= tmpLength) {
-					if (TOTPKeys.updateSlot(apduBuffer, (short) (ISO7816.OFFSET_CDATA+1), slotKeyLen,
+					if (OTPKeys.updateSlot(apduBuffer, (short) (ISO7816.OFFSET_CDATA+1), slotKeyLen,
 							apduBuffer, (short) (ISO7816.OFFSET_CDATA+slotKeyLen+2), hashLen)) {
 						apdu.setOutgoingAndSend((short) 0, (short) 0);			// Return 9000
 					} else {
@@ -317,7 +317,7 @@ public class PinSentryTOTPAdmin extends Applet {
 		byte tmpLength = apduBuffer[ISO7816.OFFSET_LC];
 
 		if ((lc_actual == (short) tmpLength) && (tmpLength > 0)) {
-			Response[0] = (byte) TOTPKeys.sha1Hash(apduBuffer, ISO7816.OFFSET_CDATA, (short) tmpLength, Response, (short) 1);
+			Response[0] = (byte) OTPKeys.sha1Hash(apduBuffer, ISO7816.OFFSET_CDATA, (short) tmpLength, Response, (short) 1);
 
 			apdu.setOutgoing();
 			apdu.setOutgoingLength((short) (Response[0] + 1));
@@ -337,7 +337,7 @@ public class PinSentryTOTPAdmin extends Applet {
 			if ((short) (keyLength + 1) < tmpLength) {
 				short dataLength = apduBuffer[(short) (ISO7816.OFFSET_CDATA + keyLength + 1)];
 				if ((short) (keyLength + dataLength + 2) <= tmpLength) {
-					Response[0] = (byte) TOTPKeys.sha1HMAC(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), keyLength,
+					Response[0] = (byte) OTPKeys.sha1HMAC(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), keyLength,
 											apduBuffer, (short) (ISO7816.OFFSET_CDATA + keyLength + 2), dataLength,
 											Response, (short) 1);
 
@@ -355,8 +355,8 @@ public class PinSentryTOTPAdmin extends Applet {
 		}
 	}
 
-// Test HMAC-SHA1 TOTP method
-	private void testSHA1TOTP(APDU apdu, byte[] apduBuffer) {
+// Test HMAC-SHA1 OTP method
+	private void testSHA1OTP(APDU apdu, byte[] apduBuffer) {
 		short lc_actual = apdu.setIncomingAndReceive();
 		byte tmpLength = apduBuffer[ISO7816.OFFSET_LC];
 
@@ -365,7 +365,7 @@ public class PinSentryTOTPAdmin extends Applet {
 			if ((short) (keyLength + 1) < tmpLength) {
 				short dataLength = apduBuffer[(short) (ISO7816.OFFSET_CDATA + keyLength + 1)];
 				if ((short) (keyLength + dataLength + 2) <= tmpLength) {
-					Response[0] = (byte) TOTPKeys.sha1HMACOTP(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), keyLength,
+					Response[0] = (byte) OTPKeys.sha1HMACOTP(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), keyLength,
 											apduBuffer, (short) (ISO7816.OFFSET_CDATA + keyLength + 2), dataLength,
 											Response, (short) 1);
 
@@ -389,7 +389,7 @@ public class PinSentryTOTPAdmin extends Applet {
 		byte tmpLength = apduBuffer[ISO7816.OFFSET_LC];
 
 		if ((lc_actual == (short) tmpLength) && (tmpLength == 0)) {
-			Response[0] = (byte) TOTPKeys.getCounterValue((short) (KeyStore.NUM_KEY_SLOTS - 1), Response, (short) 1, KeySlot.COUNTER_SIZE_BYTES);
+			Response[0] = (byte) OTPKeys.getCounterValue((short) (KeyStore.NUM_KEY_SLOTS - 1), Response, (short) 1, KeySlot.COUNTER_SIZE_BYTES);
 
 			apdu.setOutgoing();
 			apdu.setOutgoingLength((short) (Response[0] + 1));

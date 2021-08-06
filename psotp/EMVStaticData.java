@@ -12,7 +12,7 @@
  *
  */
 
-package pstotp;
+package psotp;
 
 import javacard.framework.ISOException;
 import javacard.framework.Util;

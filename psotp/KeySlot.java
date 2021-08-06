@@ -2,7 +2,7 @@
  * Basic class to encompasses a single OTP key
  */
 
-package pstotp;
+package psotp;
 
 import javacard.framework.ISO7816;
 import javacard.framework.ISOException;

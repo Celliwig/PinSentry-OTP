@@ -2,7 +2,7 @@
  * Class for key store & encryption.
  */
 
-package pstotp;
+package psotp;
 
 import javacard.framework.ISO7816;
 import javacard.framework.ISOException;

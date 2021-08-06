@@ -31,7 +31,7 @@
  *
  */
 
-package pstotp;
+package psotp;
 
 import javacard.framework.APDU;
 import javacard.framework.Applet;
@@ -40,13 +40,13 @@ import javacard.framework.JCSystem;
 import javacard.framework.Util;
 import javacard.security.RandomData;
 
-public class PinSentryTOTP extends Applet implements EMVConstants {
+public class PinSentryOTP extends Applet implements EMVConstants {
 
 	private final RandomData randomData;
 	protected final EMVProtocolState protocolState;
 	protected final EMVStaticData staticData;
-	private final KeyStore totpKeys;
-	private final byte[] totpData;
+	private final KeyStore otpKeys;
+	private final byte[] otpData;
 
 	/*
 	 * Transient byte array for constructing APDU responses.
@@ -55,16 +55,16 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 	 */
 	private final byte[] Response;
 
-	private PinSentryTOTP() {
+	private PinSentryOTP() {
 		Response = JCSystem.makeTransientByteArray((short) 256, JCSystem.CLEAR_ON_DESELECT);
 
 		randomData = RandomData.getInstance(RandomData.ALG_PSEUDO_RANDOM);
 
-		protocolState = new EMVProtocolState(this);
+		protocolState = new EMVProtocolState();
 		staticData = new EMVStaticData();
 
-		totpKeys = new KeyStore();
-		totpData = JCSystem.makeTransientByteArray((short) 8, JCSystem.CLEAR_ON_DESELECT);
+		otpKeys = new KeyStore();
+		otpData = JCSystem.makeTransientByteArray((short) 8, JCSystem.CLEAR_ON_DESELECT);
 	}
 
 	/*
@@ -73,7 +73,7 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 	 * @see javacard.framework.Applet#install(byte[], byte, byte)
 	 */
 	public static void install(byte[] buffer, short offset, byte length) {
-		(new PinSentryTOTP()).register();
+		(new PinSentryOTP()).register();
 	}
 
 	/*
@@ -165,7 +165,7 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 		if (apduBuffer[OFFSET_P2] != (byte) (0x80)) {
 			ISOException.throwIt(SW_WRONG_P1P2); // we only support transaction_data PIN
 		}
-		if (totpKeys.AccessPIN.getTriesRemaining() == 0)
+		if (otpKeys.AccessPIN.getTriesRemaining() == 0)
 		{
 			ISOException.throwIt((short) 0x6983); // PIN blocked
 			return;
@@ -176,14 +176,14 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 		 */
 		// Get PIN length in bytes, 2 digits per byte, round up if odd number of digits
 		byte pinLenBytes = (byte) (((apduBuffer[OFFSET_CDATA] & 0x0f) / 2) + ((apduBuffer[OFFSET_CDATA] & 0x0f) % 2));
-		if (totpKeys.AccessPIN.check(apduBuffer, (short) (OFFSET_CDATA + 1), pinLenBytes))
+		if (otpKeys.AccessPIN.check(apduBuffer, (short) (OFFSET_CDATA + 1), pinLenBytes))
 		{
 			protocolState.setCVMPerformed(PLAINTEXT_PIN);
 			apdu.setOutgoingAndSend((short) 0, (short) 0); // return 9000
 		}
 		else
 		{
-			ISOException.throwIt((short) ((short) (0x63C0) + (short) totpKeys.AccessPIN.getTriesRemaining()));
+			ISOException.throwIt((short) ((short) (0x63C0) + (short) otpKeys.AccessPIN.getTriesRemaining()));
 		}
 	}
 
@@ -226,7 +226,7 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 
 			case 0x17: // PIN Try Counter
 				apduBuffer[OFFSET_P2 + 1] = (byte) 0x01; // length 1 byte
-				apduBuffer[OFFSET_P2 + 2] = totpKeys.AccessPIN.getTriesRemaining(); // value
+				apduBuffer[OFFSET_P2 + 2] = otpKeys.AccessPIN.getTriesRemaining(); // value
 				// send the 4 byte TLV for PIN Try counter
 				apdu.setOutgoingAndSend(OFFSET_P1, (short) 4);
 				break;
@@ -294,16 +294,16 @@ public class PinSentryTOTP extends Applet implements EMVConstants {
 			ISOException.throwIt(SW_WRONG_LENGTH);
 		} else {
 			short slotNum = (short) ((convertBCD2Byte(apduBuffer, (short) 0x20) * 100) + convertBCD2Byte(apduBuffer, (short) 0x21));
-			if (!totpKeys.setSlot(slotNum)) ISOException.throwIt(SW_WRONG_LENGTH);
+			if (!otpKeys.setSlot(slotNum)) ISOException.throwIt(SW_WRONG_LENGTH);
 		}
 
-		// Convert TOTP value from BCD to integer
-		totpData[0] = 0x00;
-		totpData[1] = 0x00;
-		convertBCD2Int(apduBuffer, (short) 5, (short) 6, totpData, (short) 2);
+		// Convert OTP value from BCD to integer
+		otpData[0] = 0x00;
+		otpData[1] = 0x00;
+		convertBCD2Int(apduBuffer, (short) 5, (short) 6, otpData, (short) 2);
 
 		// Generate OTP response
-		totpKeys.getOTPResponse(totpData, (short) 0, (short) 8, Response, (short) 9);
+		otpKeys.getOTPResponse(otpData, (short) 0, (short) 8, Response, (short) 9);
 
 		apdu.setOutgoing();
 		apdu.setOutgoingLength((short)(Response[1]+2));
