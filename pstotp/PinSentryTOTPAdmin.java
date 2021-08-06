@@ -365,7 +365,7 @@ public class PinSentryTOTPAdmin extends Applet {
 			if ((short) (keyLength + 1) < tmpLength) {
 				short dataLength = apduBuffer[(short) (ISO7816.OFFSET_CDATA + keyLength + 1)];
 				if ((short) (keyLength + dataLength + 2) <= tmpLength) {
-					Response[0] = (byte) TOTPKeys.sha1HMACTOTP(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), keyLength,
+					Response[0] = (byte) TOTPKeys.sha1HMACOTP(apduBuffer, (short) (ISO7816.OFFSET_CDATA + 1), keyLength,
 											apduBuffer, (short) (ISO7816.OFFSET_CDATA + keyLength + 2), dataLength,
 											Response, (short) 1);
 

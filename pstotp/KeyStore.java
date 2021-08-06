@@ -31,11 +31,17 @@ public class KeyStore {
 	private static byte[] cardID = null;								// Unique ID used to 'auth' transactions
 	private static short selectedSlot = 0;
 
+	// Needed for OTP integer divide
+	private static short[] otpResponse = null;							// Use shorts to hold byte values (allows for <0)
+	private static short[] otpDivisor = null;							// This is because no integer type available
+
 	public KeyStore() {
 		if (cardID == null) {
 			ipad = JCSystem.makeTransientByteArray(KeySlot.MAX_KEY_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
 			opad = JCSystem.makeTransientByteArray(KeySlot.MAX_KEY_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
 			hmacBuf = JCSystem.makeTransientByteArray(HMAC_BUFFER_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
+			otpResponse = JCSystem.makeTransientShortArray((short) 4, JCSystem.CLEAR_ON_DESELECT);
+			otpDivisor = JCSystem.makeTransientShortArray((short) 4, JCSystem.CLEAR_ON_DESELECT);
 
 			rng_alg = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
 
@@ -114,7 +120,7 @@ public class KeyStore {
 		return keys[slotNum].update(slotKeyData, (short) (slotKeyOffset+2), (short) (slotKeyLength-2));
 	}
 
-// Set the slot to use for TOTP operations
+// Set the slot to use for OTP operations
 	public boolean setSlot(short slotNum) {
 		if (slotNum >= KeyStore.NUM_KEY_SLOTS) return false;
 		selectedSlot = slotNum;
@@ -138,7 +144,7 @@ public class KeyStore {
 			dataLength = optKey.getCounter(data, dataOffset, KeySlot.COUNTER_SIZE_BYTES);
 		}
 
-		sha1HMACTOTP(optKey.getKey(), (short) 0, optKey.getKeySize(), data, dataOffset, dataLength, outBuffer, outOffset);
+		sha1HMACOTP(optKey.getKey(), (short) 0, optKey.getKeySize(), data, dataOffset, dataLength, outBuffer, outOffset);
 	}
 
 // Return the current counter value for given slot
@@ -203,12 +209,10 @@ public class KeyStore {
 		return hashLen;
 	}
 
-// Use the SHA1 algo to create an HMAC based TOTP value for the supplied key/data pair
-	public short sha1HMACTOTP(byte[] key, short keyOffset, short keyLength, byte[] data, short dataOffset, short dataLength, byte[] outBuffer, short outOffset) {
+// Use the SHA1 algo to create an HMAC based OTP value for the supplied key/data pair
+	public short sha1HMACOTP(byte[] key, short keyOffset, short keyLength, byte[] data, short dataOffset, short dataLength, byte[] outBuffer, short outOffset) {
 		byte offset, compVal;
 		short hashLen;
-		short totpResponse[] = JCSystem.makeTransientShortArray((short) 4, JCSystem.CLEAR_ON_DESELECT);	// Use shorts to hold byte values (allows for <0)
-		short totpDivisor[] = JCSystem.makeTransientShortArray((short) 4, JCSystem.CLEAR_ON_DESELECT);	// This is because no integer type available
 
 		// Generate SHA1 HMAC
 		hashLen = sha1HMAC(key, keyOffset, keyLength, data, dataOffset, dataLength, hmacBuf, (short) 0);
@@ -219,60 +223,60 @@ public class KeyStore {
 		hmacBuf[offset] = (byte) (hmacBuf[offset] & 0x7f);
 
 		// Copy 4 required bytes from HMAC
-		totpResponse[0] = (short) (hmacBuf[offset] & 0xff);					// MSB
-		totpResponse[1] = (short) (hmacBuf[(short) (offset + 1)] & 0xff);
-		totpResponse[2] = (short) (hmacBuf[(short) (offset + 2)] & 0xff);
-		totpResponse[3] = (short) (hmacBuf[(short) (offset + 3)] & 0xff);			// LSB
+		otpResponse[0] = (short) (hmacBuf[offset] & 0xff);					// MSB
+		otpResponse[1] = (short) (hmacBuf[(short) (offset + 1)] & 0xff);
+		otpResponse[2] = (short) (hmacBuf[(short) (offset + 2)] & 0xff);
+		otpResponse[3] = (short) (hmacBuf[(short) (offset + 3)] & 0xff);			// LSB
 
-		// Create divisor for 6 digit TOTPs
-		totpDivisor[0] = 0x0000;								// MSB
-		totpDivisor[1] = 0x000f;
-		totpDivisor[2] = 0x0042;
-		totpDivisor[3] = 0x0040;								// LSB
+		// Create divisor for 6 digit OTPs
+		otpDivisor[0] = 0x0000;									// MSB
+		otpDivisor[1] = 0x000f;
+		otpDivisor[2] = 0x0042;
+		otpDivisor[3] = 0x0040;									// LSB
 
-		// Need to perform totpResponse modulo totpDivisor
+		// Need to perform otpResponse modulo otpDivisor
 		while (true) {
-			// Compare totpResponse and totpDivisor, specifically checking for totpResponse < totpDivisor
+			// Compare otpResponse and otpDivisor, specifically checking for otpResponse < otpDivisor
 			compVal = 0;
-			if (totpResponse[0] > totpDivisor[0]) compVal += 8;
-			if (totpResponse[0] < totpDivisor[0]) compVal -= 8;
-			if (totpResponse[1] > totpDivisor[1]) compVal += 4;
-			if (totpResponse[1] < totpDivisor[1]) compVal -= 4;
-			if (totpResponse[2] > totpDivisor[2]) compVal += 2;
-			if (totpResponse[2] < totpDivisor[2]) compVal -= 2;
-			if (totpResponse[3] > totpDivisor[3]) compVal += 1;
-			if (totpResponse[3] < totpDivisor[3]) compVal -= 1;
+			if (otpResponse[0] > otpDivisor[0]) compVal += 8;
+			if (otpResponse[0] < otpDivisor[0]) compVal -= 8;
+			if (otpResponse[1] > otpDivisor[1]) compVal += 4;
+			if (otpResponse[1] < otpDivisor[1]) compVal -= 4;
+			if (otpResponse[2] > otpDivisor[2]) compVal += 2;
+			if (otpResponse[2] < otpDivisor[2]) compVal -= 2;
+			if (otpResponse[3] > otpDivisor[3]) compVal += 1;
+			if (otpResponse[3] < otpDivisor[3]) compVal -= 1;
 			if (compVal < 0) break;
 
-			// Subtract totpDivisor from totpResponse
-			totpResponse[3] = (short)  (totpResponse[3] - totpDivisor[3]);
+			// Subtract otpDivisor from otpResponse
+			otpResponse[3] = (short)  (otpResponse[3] - otpDivisor[3]);
 			// Check for 'rollunder'
-			if (totpResponse[3] < 0) {
-				totpResponse[3] = (short) (totpResponse[3] + 0x100);
-				totpResponse[2]--;
+			if (otpResponse[3] < 0) {
+				otpResponse[3] = (short) (otpResponse[3] + 0x100);
+				otpResponse[2]--;
 			}
-			totpResponse[2] = (short) (totpResponse[2] - totpDivisor[2]);
+			otpResponse[2] = (short) (otpResponse[2] - otpDivisor[2]);
 			// Check for 'rollunder'
-			if (totpResponse[2] < 0) {
-				totpResponse[2] = (short) (totpResponse[2] + 0x100);
-				totpResponse[1]--;
+			if (otpResponse[2] < 0) {
+				otpResponse[2] = (short) (otpResponse[2] + 0x100);
+				otpResponse[1]--;
 			}
-			totpResponse[1] = (short) (totpResponse[1] - totpDivisor[1]);
+			otpResponse[1] = (short) (otpResponse[1] - otpDivisor[1]);
 			// Check for 'rollunder'
-			if (totpResponse[1] < 0) {
-				totpResponse[1] = (short) (totpResponse[1] + 0x100);
-				totpResponse[0]--;
+			if (otpResponse[1] < 0) {
+				otpResponse[1] = (short) (otpResponse[1] + 0x100);
+				otpResponse[0]--;
 			}
-			totpResponse[0] = (short) (totpResponse[0] - totpDivisor[0]);
+			otpResponse[0] = (short) (otpResponse[0] - otpDivisor[0]);
 			// Check for 'rollunder' (this shouldn't happen)
-			if (totpResponse[0] < 0) break;
+			if (otpResponse[0] < 0) break;
 		}
 
 		// Copy result to output buffer
-		outBuffer[outOffset] = (byte) (totpResponse[0] & 0xff);
-		outBuffer[(short) (outOffset + 1)] = (byte) (totpResponse[1] & 0xff);
-		outBuffer[(short) (outOffset + 2)] = (byte) (totpResponse[2] & 0xff);
-		outBuffer[(short) (outOffset + 3)] = (byte) (totpResponse[3] & 0xff);
+		outBuffer[outOffset] = (byte) (otpResponse[0] & 0xff);
+		outBuffer[(short) (outOffset + 1)] = (byte) (otpResponse[1] & 0xff);
+		outBuffer[(short) (outOffset + 2)] = (byte) (otpResponse[2] & 0xff);
+		outBuffer[(short) (outOffset + 3)] = (byte) (otpResponse[3] & 0xff);
 
 		return (short) 4;
 	}
