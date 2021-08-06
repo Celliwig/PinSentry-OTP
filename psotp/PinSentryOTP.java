@@ -47,6 +47,7 @@ public class PinSentryOTP extends Applet implements EMVConstants {
 	protected final EMVStaticData staticData;
 	private final KeyStore otpKeys;
 	private final byte[] otpData;
+	private final short[] intCascade;
 
 	/*
 	 * Transient byte array for constructing APDU responses.
@@ -65,6 +66,8 @@ public class PinSentryOTP extends Applet implements EMVConstants {
 
 		otpKeys = new KeyStore();
 		otpData = JCSystem.makeTransientByteArray((short) 8, JCSystem.CLEAR_ON_DESELECT);
+
+		intCascade = JCSystem.makeTransientShortArray((short) 8, JCSystem.CLEAR_ON_DESELECT);
 	}
 
 	/*
@@ -363,7 +366,6 @@ public class PinSentryOTP extends Applet implements EMVConstants {
 
 // Convert an array of bytes in BCD format, to integer value (max 8 bytes)
 	private boolean convertBCD2Int(byte[] bcdData, short bcdDataOffset, short bcdDataLength, byte[] outBuffer, short outBufferOffset) {
-		short[] intCascade = JCSystem.makeTransientShortArray((short) 8, JCSystem.CLEAR_ON_DESELECT);
 		short bcdInt, overflow, digitOffset;
 		byte i, j;
 
