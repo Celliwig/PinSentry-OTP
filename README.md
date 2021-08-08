@@ -1,7 +1,14 @@
 # PinSentry-OTP
-The purpose of this applet is to provide a OTP (One Time Password) implementation which can be accessed using a Barclays PinSentry device.
+A Javacard applet to provide a OTP (One Time Password) implementation which can be used in conjunction with a Barclays PinSentry device.
 
 ## Introduction
+With increasing attacks on networked devices, OTP provides a simple but effective additional layer of defense. However looking at existing implementations a number of problems are apparent:
+
+* Small number of keys supported
+* Cost
+* Air gap
+
+Many tokens providing OTP capabilities have only a very limited number of key slots which means either sharing keys between devices (bad), or having to buy and manage multiple tokens (also bad cost wise, and potentially confusing!). While prices for single devices can be quite reasonable, starting at about £20, if multiple devices are required that cost soon escalates. Another factor is that whether using an app on a smartphone, or hardware token connected to a computer, the key store is connected to a potentially compromised machine. While a hardware token should in theory be imprevious to a corrupted host's attacks, the integrity of any particular hardware implementation can only be verified by the manufacturer due to the closed nature of these devices. Smartphone apps provide a similar problem in that there is no way to reasonably audit key handling (and therefore potential for leakage), and the recent reporting of the Pegasus spyware reminds us of the vunerability of smartphones. So providing a method
 
 ## Requirements
 
