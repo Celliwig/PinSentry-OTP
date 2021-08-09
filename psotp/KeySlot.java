@@ -175,7 +175,7 @@ public class KeySlot {
 	// Resets the slot counter
 	public boolean update(byte[] keyData, short keyOffset, short keySize) {
 		// Check if key data is larger than slot size
-		if (keySize >= KeySlot.MAX_KEY_SIZE_BYTES) return false;
+		if (keySize > KeySlot.MAX_KEY_SIZE_BYTES) return false;
 
 		// Copy key data to slot
 		Util.arrayCopyNonAtomic(keyData, keyOffset, slotKey, (short) 0, keySize);
