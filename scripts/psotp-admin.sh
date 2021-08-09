@@ -238,7 +238,7 @@ update_pin() {
 	local update_pin_errcode=`echo "${update_pin}"| grep "Received " | tail -n 1`
 	echo "${update_pin_errcode}"| grep 'Received (SW1=0x90, SW2=0x00)' > /dev/null
 	if [ "${?}" -ne 0 ]; then
-		echo "failed [${card_pin_errcode}]"
+		echo "failed [${update_pin_errcode}]"
 		exit -1
 	fi
 	echo "OK"
@@ -267,7 +267,7 @@ update_pin_emv() {
 	local update_pin_errcode=`echo "${update_pin}"| grep "Received " | tail -n 1`
 	echo "${update_pin_errcode}"| grep 'Received (SW1=0x90, SW2=0x00)' > /dev/null
 	if [ "${?}" -ne 0 ]; then
-		echo "failed [${card_pin_errcode}]"
+		echo "failed [${update_pin_errcode}]"
 		exit -1
 	fi
 	echo "OK"
@@ -300,7 +300,7 @@ update_key_slot() {
 	local update_slot_errcode=`echo "${update_slot}"| grep "Received " | tail -n 1`
 	echo "${update_slot_errcode}"| grep 'Received (SW1=0x90, SW2=0x00)' > /dev/null
 	if [ "${?}" -ne 0 ]; then
-		echo "failed [${card_slot_errcode}]"
+		echo "failed [${update_slot_errcode}]"
 		exit -1
 	fi
 	echo "OK"
