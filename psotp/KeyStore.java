@@ -31,17 +31,11 @@ public class KeyStore {
 	private static byte[] cardID = null;								// Unique ID used to 'auth' transactions
 	private static short selectedSlot = 0;
 
-	// Needed for OTP integer divide
-	private static short[] otpResponse = null;							// Use shorts to hold byte values (allows for <0)
-	private static short[] otpDivisor = null;							// This is because no integer type available
-
 	public KeyStore() {
 		if (cardID == null) {
 			ipad = JCSystem.makeTransientByteArray(KeySlot.MAX_KEY_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
 			opad = JCSystem.makeTransientByteArray(KeySlot.MAX_KEY_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
 			hmacBuf = JCSystem.makeTransientByteArray(HMAC_BUFFER_SIZE_BYTES, JCSystem.CLEAR_ON_DESELECT);
-			otpResponse = JCSystem.makeTransientShortArray((short) 4, JCSystem.CLEAR_ON_DESELECT);
-			otpDivisor = JCSystem.makeTransientShortArray((short) 4, JCSystem.CLEAR_ON_DESELECT);
 
 			rng_alg = RandomData.getInstance(RandomData.ALG_SECURE_RANDOM);
 
@@ -213,6 +207,8 @@ public class KeyStore {
 	public short sha1HMACOTP(byte[] key, short keyOffset, short keyLength, byte[] data, short dataOffset, short dataLength, byte[] outBuffer, short outOffset) {
 		byte offset, compVal;
 		short hashLen;
+		short otpResponse0, otpResponse1, otpResponse2, otpResponse3;
+		short otpDivisor0, otpDivisor1, otpDivisor2, otpDivisor3;
 
 		// Generate SHA1 HMAC
 		hashLen = sha1HMAC(key, keyOffset, keyLength, data, dataOffset, dataLength, hmacBuf, (short) 0);
@@ -223,60 +219,60 @@ public class KeyStore {
 		hmacBuf[offset] = (byte) (hmacBuf[offset] & 0x7f);
 
 		// Copy 4 required bytes from HMAC
-		otpResponse[0] = (short) (hmacBuf[offset] & 0xff);					// MSB
-		otpResponse[1] = (short) (hmacBuf[(short) (offset + 1)] & 0xff);
-		otpResponse[2] = (short) (hmacBuf[(short) (offset + 2)] & 0xff);
-		otpResponse[3] = (short) (hmacBuf[(short) (offset + 3)] & 0xff);			// LSB
+		otpResponse0 = (short) (hmacBuf[offset] & 0xff);					// MSB
+		otpResponse1 = (short) (hmacBuf[(short) (offset + 1)] & 0xff);
+		otpResponse2 = (short) (hmacBuf[(short) (offset + 2)] & 0xff);
+		otpResponse3 = (short) (hmacBuf[(short) (offset + 3)] & 0xff);				// LSB
 
 		// Create divisor for 6 digit OTPs
-		otpDivisor[0] = 0x0000;									// MSB
-		otpDivisor[1] = 0x000f;
-		otpDivisor[2] = 0x0042;
-		otpDivisor[3] = 0x0040;									// LSB
+		otpDivisor0 = 0x0000;									// MSB
+		otpDivisor1 = 0x000f;
+		otpDivisor2 = 0x0042;
+		otpDivisor3 = 0x0040;									// LSB
 
 		// Need to perform otpResponse modulo otpDivisor
 		while (true) {
 			// Compare otpResponse and otpDivisor, specifically checking for otpResponse < otpDivisor
 			compVal = 0;
-			if (otpResponse[0] > otpDivisor[0]) compVal += 8;
-			if (otpResponse[0] < otpDivisor[0]) compVal -= 8;
-			if (otpResponse[1] > otpDivisor[1]) compVal += 4;
-			if (otpResponse[1] < otpDivisor[1]) compVal -= 4;
-			if (otpResponse[2] > otpDivisor[2]) compVal += 2;
-			if (otpResponse[2] < otpDivisor[2]) compVal -= 2;
-			if (otpResponse[3] > otpDivisor[3]) compVal += 1;
-			if (otpResponse[3] < otpDivisor[3]) compVal -= 1;
+			if (otpResponse0 > otpDivisor0) compVal += 8;
+			if (otpResponse0 < otpDivisor0) compVal -= 8;
+			if (otpResponse1 > otpDivisor1) compVal += 4;
+			if (otpResponse1 < otpDivisor1) compVal -= 4;
+			if (otpResponse2 > otpDivisor2) compVal += 2;
+			if (otpResponse2 < otpDivisor2) compVal -= 2;
+			if (otpResponse3 > otpDivisor3) compVal += 1;
+			if (otpResponse3 < otpDivisor3) compVal -= 1;
 			if (compVal < 0) break;
 
 			// Subtract otpDivisor from otpResponse
-			otpResponse[3] = (short)  (otpResponse[3] - otpDivisor[3]);
+			otpResponse3 = (short)  (otpResponse3 - otpDivisor3);
 			// Check for 'rollunder'
-			if (otpResponse[3] < 0) {
-				otpResponse[3] = (short) (otpResponse[3] + 0x100);
-				otpResponse[2]--;
+			if (otpResponse3 < 0) {
+				otpResponse3 = (short) (otpResponse3 + 0x100);
+				otpResponse2--;
 			}
-			otpResponse[2] = (short) (otpResponse[2] - otpDivisor[2]);
+			otpResponse2 = (short) (otpResponse2 - otpDivisor2);
 			// Check for 'rollunder'
-			if (otpResponse[2] < 0) {
-				otpResponse[2] = (short) (otpResponse[2] + 0x100);
-				otpResponse[1]--;
+			if (otpResponse2 < 0) {
+				otpResponse2 = (short) (otpResponse2 + 0x100);
+				otpResponse1--;
 			}
-			otpResponse[1] = (short) (otpResponse[1] - otpDivisor[1]);
+			otpResponse1 = (short) (otpResponse1 - otpDivisor1);
 			// Check for 'rollunder'
-			if (otpResponse[1] < 0) {
-				otpResponse[1] = (short) (otpResponse[1] + 0x100);
-				otpResponse[0]--;
+			if (otpResponse1 < 0) {
+				otpResponse1 = (short) (otpResponse1 + 0x100);
+				otpResponse0--;
 			}
-			otpResponse[0] = (short) (otpResponse[0] - otpDivisor[0]);
+			otpResponse0 = (short) (otpResponse0 - otpDivisor0);
 			// Check for 'rollunder' (this shouldn't happen)
-			if (otpResponse[0] < 0) break;
+			if (otpResponse0 < 0) break;
 		}
 
 		// Copy result to output buffer
-		outBuffer[outOffset] = (byte) (otpResponse[0] & 0xff);
-		outBuffer[(short) (outOffset + 1)] = (byte) (otpResponse[1] & 0xff);
-		outBuffer[(short) (outOffset + 2)] = (byte) (otpResponse[2] & 0xff);
-		outBuffer[(short) (outOffset + 3)] = (byte) (otpResponse[3] & 0xff);
+		outBuffer[outOffset] = (byte) (otpResponse0 & 0xff);
+		outBuffer[(short) (outOffset + 1)] = (byte) (otpResponse1 & 0xff);
+		outBuffer[(short) (outOffset + 2)] = (byte) (otpResponse2 & 0xff);
+		outBuffer[(short) (outOffset + 3)] = (byte) (otpResponse3 & 0xff);
 
 		return (short) 4;
 	}
