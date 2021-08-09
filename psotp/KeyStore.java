@@ -13,8 +13,7 @@ import javacard.security.MessageDigest;
 import javacard.security.RandomData;
 
 public class KeyStore {
-	//public static final short NUM_KEY_SLOTS = (short) 512;					// Number of key slots to create
-	public static final short NUM_KEY_SLOTS = (short) 16;
+	public static final short NUM_KEY_SLOTS = (short) 512;						// Number of key slots to create
 	public static final short HMAC_BUFFER_SIZE_BYTES = (short) 128;					// Size of buffer used to generate HMAC digest
 	public static final short CARDID_SIZE_BYTES = 16;						// CardID size in bytes
 
