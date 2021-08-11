@@ -97,20 +97,22 @@ public class KeyStore {
 	}
 
 // Update a particular key slot with new key data after checking the SHA1 hash of the key
-	public boolean updateSlot(byte[] slotKeyData, short slotKeyOffset, short slotKeyLength, byte[] hash, short hashOffset, short hashLength) {
-		short slotNum;
+	public boolean updateSlot(short slotNum, byte[] keyData, short keyOffset, short keyLength, byte[] counterData, short counterOffset, short counterLength) {
+		boolean rtn;
 
-		// Check hash is correct
-		if (!checkHash(slotKeyData, slotKeyOffset, slotKeyLength, hash, hashOffset, hashLength)) return false;
-		// Check if data is long enough
-		if (slotKeyLength < 3) return false;
+		// Check key data size
+		if ((keyLength < 1) || (keyLength > KeySlot.MAX_KEY_SIZE_BYTES)) return false;
 
-		// Get slot number
-		slotNum = Util.getShort(slotKeyData, slotKeyOffset);
 		// Check slot number valid
 		if ((slotNum < 0) || (slotNum >= KeyStore.NUM_KEY_SLOTS)) return false;
 
-		return keys[slotNum].update(slotKeyData, (short) (slotKeyOffset+2), (short) (slotKeyLength-2));
+		rtn = keys[slotNum].update(keyData, keyOffset, keyLength);
+		if (counterLength > 0) {
+			keys[slotNum].setCounter(counterData, counterOffset, counterLength);
+		} else {
+			keys[slotNum].resetCounter();
+		}
+		return rtn;
 	}
 
 // Set the slot to use for OTP operations

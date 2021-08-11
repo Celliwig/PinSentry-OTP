@@ -281,27 +281,110 @@ public class PinSentryOTPAdmin extends Applet {
 		apdu.sendBytesLong(Response, (short) 0, (short) (Response[0] + 1));
 	}
 
-// Add a update slot in keystore
+// Update slot in keystore
+// APDU format (must be in order)
+//	label	length (bytes)		item
+//	"keyN"	2			<slot number>	(mandatory)
+//	"keyK"	[1..keysize]		<key data>	(mandatory)
+//	"keyC"	8			<counter data>	(optional)
+//	"keyH"	[hashsize]		<hash data>	(mandatory)
+// Hash calculated
 	private void updateKeySlot(APDU apdu, byte[] apduBuffer) {
-		short lc_actual = apdu.setIncomingAndReceive();
-		byte tmpLength = apduBuffer[ISO7816.OFFSET_LC];
+		short slotNum = 0;
+		short keyOffset = 0, keyLength = 0;
+		short counterOffset = 0, counterLength = 0;
+		short hashOffset, hashLength;
+		short dataOffset, msgLength;
 
-		if ((lc_actual == (short) tmpLength) && (tmpLength > 0)) {
-			short slotKeyLen = apduBuffer[(short) (ISO7816.OFFSET_CDATA)];
-			if ((short) (slotKeyLen + 1) < tmpLength) {
-				short hashLen = apduBuffer[(short) (ISO7816.OFFSET_CDATA + slotKeyLen + 1)];
-				if ((short) (slotKeyLen + hashLen + 2) <= tmpLength) {
-					if (OTPKeys.updateSlot(apduBuffer, (short) (ISO7816.OFFSET_CDATA+1), slotKeyLen,
-							apduBuffer, (short) (ISO7816.OFFSET_CDATA+slotKeyLen+2), hashLen)) {
-						apdu.setOutgoingAndSend((short) 0, (short) 0);			// Return 9000
-					} else {
-						ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
-					}
+		short lcActual = apdu.setIncomingAndReceive();
+		short dataLeft = (short) (apduBuffer[ISO7816.OFFSET_LC] & 0x00ff);
+
+		if ((lcActual == (short) dataLeft) && (dataLeft > 0)) {
+			dataOffset = ISO7816.OFFSET_CDATA;
+
+			// Check for slot number
+			if (dataLeft > 7) {		// Check remaining data
+				// Check for tag
+				if ((apduBuffer[dataOffset] == 'k') && (apduBuffer[(short) (dataOffset+1)] == 'e') && (apduBuffer[(short) (dataOffset+2)] == 'y') &&
+									(apduBuffer[(short) (dataOffset+3)] == 'N') && (apduBuffer[(short) (dataOffset+4)] == 0x02)) {
+					slotNum = Util.getShort(apduBuffer, (short) (dataOffset+5));
+					dataLeft = (short) (dataLeft - 7);
+					dataOffset = (short) (dataOffset + 7);
 				} else {
-					ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+					ISOException.throwIt((short) (ISO7816.SW_WRONG_DATA+1));
 				}
 			} else {
-				ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);
+				ISOException.throwIt((short) (ISO7816.SW_WRONG_LENGTH+1));
+			}
+
+			// Check for key data
+			if (dataLeft > 6) {		// Check remaining data
+				// Check for tag
+				if ((apduBuffer[dataOffset] == 'k') && (apduBuffer[(short) (dataOffset+1)] == 'e') && (apduBuffer[(short) (dataOffset+2)] == 'y') &&
+									(apduBuffer[(short) (dataOffset+3)] == 'K')) {
+					keyLength = apduBuffer[(short) (dataOffset+4)];
+					keyOffset = (short) (dataOffset+5);
+
+					if (dataLeft > (short) (keyLength + 5)) {
+						dataLeft = (short) (dataLeft - (keyLength + 5));
+						dataOffset = (short) (dataOffset + (keyLength + 5));
+					} else {
+						ISOException.throwIt((short) (ISO7816.SW_WRONG_DATA+2));
+					}
+				} else {
+					ISOException.throwIt((short) (ISO7816.SW_WRONG_DATA+2));
+				}
+			} else {
+				ISOException.throwIt((short) (ISO7816.SW_WRONG_LENGTH+2));
+			}
+
+			// Check for counter data
+			if (dataLeft > 5) {		// Check remaining data
+				// Check for tag
+				if ((apduBuffer[dataOffset] == 'k') && (apduBuffer[(short) (dataOffset+1)] == 'e') && (apduBuffer[(short) (dataOffset+2)] == 'y') &&
+									(apduBuffer[(short) (dataOffset+3)] == 'C') && (apduBuffer[(short) (dataOffset+4)] == 0x08)) {
+					counterLength = 8;
+					counterOffset = (short) (dataOffset+5);
+
+					if (dataLeft > (short) (counterLength + 5)) {
+						dataLeft = (short) (dataLeft - (counterLength + 5));
+						dataOffset = (short) (dataOffset + (counterLength + 5));
+					} else {
+						ISOException.throwIt((short) (ISO7816.SW_WRONG_DATA+3));
+					}
+				}
+			}
+
+			// Check for hash data
+			if (dataLeft > 5) {		// Check remaining data
+				// Check for tag
+				if ((apduBuffer[dataOffset] == 'k') && (apduBuffer[(short) (dataOffset+1)] == 'e') && (apduBuffer[(short) (dataOffset+2)] == 'y') &&
+									(apduBuffer[(short) (dataOffset+3)] == 'H')) {
+					// Save this offset, used to calculate hash for comparison
+					msgLength = (short) (dataOffset - ISO7816.OFFSET_CDATA);
+
+					hashLength = apduBuffer[(short) (dataOffset+4)];
+					hashOffset = (short) (dataOffset+5);
+
+					if (dataLeft >= (short) (hashLength + 5)) {
+						if (!OTPKeys.checkHash(apduBuffer, ISO7816.OFFSET_CDATA, msgLength, apduBuffer, hashOffset, hashLength)) {
+							ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
+						}
+					} else {
+						ISOException.throwIt((short) (ISO7816.SW_WRONG_DATA+15));
+					}
+				} else {
+					ISOException.throwIt((short) (ISO7816.SW_WRONG_DATA+15));
+				}
+			} else {
+				ISOException.throwIt((short) (ISO7816.SW_WRONG_LENGTH+15));
+			}
+
+			// Update slot
+			if (OTPKeys.updateSlot(slotNum, apduBuffer, keyOffset, keyLength, apduBuffer, counterOffset, counterLength)) {
+				apdu.setOutgoingAndSend((short) 0, (short) 0);			// Return 9000
+			} else {
+				ISOException.throwIt(ISO7816.SW_CONDITIONS_NOT_SATISFIED);
 			}
 		} else {
 			ISOException.throwIt(ISO7816.SW_WRONG_LENGTH);

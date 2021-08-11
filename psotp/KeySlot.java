@@ -171,6 +171,25 @@ public class KeySlot {
 		return COUNTER_SIZE_BYTES;
 	}
 
+	// Reset slot counter
+	public void resetCounter() {
+		slotCounter[0] = 0x00;
+		slotCounter[1] = 0x00;
+		slotCounter[2] = 0x00;
+		slotCounter[3] = 0x00;
+		slotCounter[4] = 0x00;
+		slotCounter[5] = 0x00;
+		slotCounter[6] = 0x00;
+		slotCounter[7] = 0x00;
+	}
+
+	// Update slot counter
+	public void setCounter(byte[] counterData, short counterOffset, short counterLength) {
+		if (counterLength == COUNTER_SIZE_BYTES) {
+			Util.arrayCopyNonAtomic(counterData, counterOffset, slotCounter, (short) 0, COUNTER_SIZE_BYTES);
+		}
+	}
+
 	// Updates the slot with a new key
 	// Resets the slot counter
 	public boolean update(byte[] keyData, short keyOffset, short keySize) {
@@ -180,16 +199,6 @@ public class KeySlot {
 		// Copy key data to slot
 		Util.arrayCopyNonAtomic(keyData, keyOffset, slotKey, (short) 0, keySize);
 		slotKeySize = keySize;
-
-		// Reset slot counter
-		slotCounter[0] = 0x00;
-		slotCounter[1] = 0x00;
-		slotCounter[2] = 0x00;
-		slotCounter[3] = 0x00;
-		slotCounter[4] = 0x00;
-		slotCounter[5] = 0x00;
-		slotCounter[6] = 0x00;
-		slotCounter[7] = 0x00;
 
 		return true;
 	}
