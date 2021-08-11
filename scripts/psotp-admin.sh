@@ -1,5 +1,6 @@
 #!/bin/bash
 
+COUNTER_VALUE=""
 KEY_HEX=""
 PIN_ADMIN=""
 PIN_NEW=""
@@ -9,22 +10,26 @@ SLOT_NUM=""
 
 usage() {
 	echo "${SCRIPTNAME}: PSOTP Admin Tool"
-	echo "	-a		Add key"
-	echo "	-e		Update EMV PIN"
-	echo "	-k <key>	Key (as hex)"
-	echo "	-h		Help text (this)"
-	echo "	-i		Print card info"
-	echo "	-m		Management PIN"
-	echo "	-n		Update management PIN"
-	echo "	-s <slot num>	Slot number"
+	echo "	-a			Add key"
+	echo "	-c <counter value>	HOTP counter value"
+	echo "	-e <new PIN>		Update EMV PIN"
+	echo "	-k <key>		Key (as hex)"
+	echo "	-h			Help text (this)"
+	echo "	-i			Print card info"
+	echo "	-m <PIN>		Management PIN"
+	echo "	-n <new PIN>		Update management PIN"
+	echo "	-s <slot num>		Slot number"
 	exit 0
 }
 
 # Get CLI arguments
-while getopts ":htaie:k:m:n:s:" opt; do
+while getopts ":htaic:e:k:m:n:s:" opt; do
 	case ${opt} in
 		a )
 			PSTOPT_ACTION="addkey"
+			;;
+		c )
+			COUNTER_VALUE="${OPTARG}"
 			;;
 		e )
 			PSTOPT_ACTION="updatepinemv"
@@ -109,6 +114,17 @@ check_key() {
 	fi
 	if [ "${key_txt_len}" -ne "${key_len}" ]; then
 		echo "${SCRIPTNAME}: Error: Invalid key"
+		exit -1
+	fi
+}
+
+check_counterval() {
+	local counter_value=${1}
+	local counter_value_len=${#counter_value}
+	# Strip non-hex characters from counter value
+	local countval_len=`echo -n ${counter_value}| sed 's|[^0-9]||g'| wc -c`
+	if [ "${counter_value_len}" -ne "${countval_len}" ]; then
+		echo "${SCRIPTNAME}: Error: Counter value"
 		exit -1
 	fi
 }
@@ -277,6 +293,7 @@ update_key_slot() {
 	local pin_txt="${1}"
 	local slot_num="${2}"
 	local key_hex="${3}"
+	local counter_value="${4}"
 	check_pin "${pin_txt}" 8
 	check_auth "${pin_txt}"
 	local card_info_reply=`fetch_cardinfo "${pin_txt}"`
@@ -284,18 +301,30 @@ update_key_slot() {
 	local cardslots=`fetch_cardinfo_maxslots "${card_info_reply}"`
 	check_slotnum "${slot_num}" "${cardslots}"
 	check_key "${key_hex}"
+	check_counterval "${counter_value}"
 
+	# keyN<size bytes><slot number>
+	local update_cmd_slotnum=`printf "6b65794e02%04x" ${slot_num}`
+	# keyK<size bytes><key data>
+	local update_cmd_keydata=`printf "6b65794b%02x%s" $((${#key_hex}/2)) ${key_hex}`
+	# keyC<size bytes><counter value>
+	local update_cmd_counterval=""
+	if [[ "${counter_value}" != "" ]]; then
+		local update_cmd_counterval=`printf "6b65794308%016x" ${counter_value}`
+	fi
 	# Build command primitive
-	local update_slot_cmd=`printf "%04x%s" ${slot_num} ${key_hex}`
+	local update_cmd=`printf "%s%s%s" ${update_cmd_slotnum} ${update_cmd_keydata} ${update_cmd_counterval}`
 	# Build hash data
-	local hash_data=`echo -n "${update_slot_cmd}${cardid}"| xxd -r -p - |sha1sum | sed "s|  -||g"`
+	local hashdata=`echo -n "${update_cmd}${cardid}"| xxd -r -p - |sha1sum | sed "s|  -||g"`
+	# keyH<size bytes><hash data>
+	local update_cmd_hashdata=`printf "6b657948%02x%s" $((${#hashdata}/2)) ${hashdata}`
 	# Build command
-	local update_slot_cmd=`printf "%02x%s%02x%s" $((${#update_slot_cmd}/2)) ${update_slot_cmd} $((${#hash_data}/2)) ${hash_data}`
-	local update_slot_cmd=`printf "00020200%02x%s" $((${#update_slot_cmd}/2)) ${update_slot_cmd}`
+	local update_cmd=`printf "%s%s" ${update_cmd} ${update_cmd_hashdata}`
+	local update_cmd=`printf "00020200%02x%s" $((${#update_cmd}/2)) ${update_cmd}`
 
 	# Execute command
 	echo -n "Update Slot[${slot_num}]: "
-	local update_slot=`opensc-tool -s "00A404000da00000000380022e61646d696e" -s "0001010004${pin_txt}" -s "${update_slot_cmd}" 2>/dev/null`
+	local update_slot=`opensc-tool -s "00A404000da00000000380022e61646d696e" -s "0001010004${pin_txt}" -s "${update_cmd}" 2>/dev/null`
 	if [ ${?} -ne 0 ]; then echo "Failed (Bad APDU)"; exit -1; fi
 	local update_slot_errcode=`echo "${update_slot}"| grep "Received " | tail -n 1`
 	echo "${update_slot_errcode}"| grep 'Received (SW1=0x90, SW2=0x00)' > /dev/null
@@ -309,7 +338,7 @@ update_key_slot() {
 # Execute action
 case "${PSTOPT_ACTION}" in
 	addkey )
-		update_key_slot "${PIN_ADMIN}" "${SLOT_NUM}" "${KEY_HEX}"
+		update_key_slot "${PIN_ADMIN}" "${SLOT_NUM}" "${KEY_HEX}" "${COUNTER_VALUE}"
 		;;
 	printinfo )
 		display_info "${PIN_ADMIN}"
