@@ -204,11 +204,11 @@ The PinSentry offers 3 different methods of generating a 2FA response, these are
 are actually useful in combination with a Javacard. This is because they will all do the same operation, but some will just zero a parameter field. The modes, 
 and expected input/output are listed below.
 
-* Identify - PIN
+* Identify -> PIN:
 	Returns a HOTP code for slot 0.
-* Respond - PIN - Enter Number
+* Respond -> PIN -> Enter Number:
 	Returns a HOTP code for slot #<Enter Number>.
-* Sign - PIN - Enter Ref - Enter Amount
+* Sign -> PIN -> Enter Ref -> Enter Amount:
 	Returns a OTP code for slot #<Enter Ref>, using value <Enter Amount> instead of the slot's HOTP counter.
 
 So normally you would press the 'Respond' button, enter the EMV PIN, enter the slot number, and the HOTP response will then be displayed (after a few seconds).
