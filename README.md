@@ -208,14 +208,18 @@ and expected input/output are listed below.
 
 * Identify -> PIN:
 	Returns a HOTP code for slot 0.
-* Respond -> PIN -> Enter 6 Number:
-	Returns a HOTP code for slot #<Enter Number>.
+* Respond -> PIN -> Enter Number:
+	Returns a HOTP code for slot [Enter Number].
 * Sign -> PIN -> Enter Ref -> Enter Amount:
-	Returns a OTP code for slot #<Enter Ref>, using value <Enter Amount> instead of the slot's HOTP counter.
+	Returns a OTP code for slot [Enter Ref], using value [Enter Amount] instead of the slot's HOTP counter.
 
 So normally you would press the 'Respond' button, enter the EMV PIN, enter the slot number, and the HOTP response will then be displayed (after a few seconds).
 The 'Sign' mode could be used as partial implementation of TOTP, but the time value would have to be supplied from a device with an actual RTC.
 
+## Supported devices
+* Barclays PinSentry: Supported
+* Natwest: Partially tested (Generates OTP code, couldn't check code was correct)
+	
 ## Todo
 
 ## References
