@@ -198,6 +198,8 @@ AZOKDOMRXJWEVD5GTQ7NCPSBCSWTWMXYYBDBYJSRMP6AZA4HC4QYJ4GAE2ZGMLAITFXYXJI3MH2U7KGX
 
 Note that the '=' in the key generated needs to be converted to a '-' for the key to work, this is down to the way characters are represented between the 2
 programs. Also the key file should only be readable by the user only, so 'chmod 400 <keyfile>'.
+	
+<b>N.B. google-authenticator needs the OTP value padded with '0's if it's less than 6 digits!</b>
 
 ### PinSentry & 2FA generation
 The PinSentry offers 3 different methods of generating a 2FA response, these are selected by the 'Identify', 'Respond', and 'Sign' buttons. Only 2 of these
@@ -206,7 +208,7 @@ and expected input/output are listed below.
 
 * Identify -> PIN:
 	Returns a HOTP code for slot 0.
-* Respond -> PIN -> Enter Number:
+* Respond -> PIN -> Enter 6 Number:
 	Returns a HOTP code for slot #<Enter Number>.
 * Sign -> PIN -> Enter Ref -> Enter Amount:
 	Returns a OTP code for slot #<Enter Ref>, using value <Enter Amount> instead of the slot's HOTP counter.
